@@ -1,39 +1,78 @@
 import socket
-import sys
+import threading
+import json
 from chat_utils import *
-import client_state_machine as csm
-from chat_gui import GUI 
+from client_state_machine import ClientSM
+from chat_gui import GUI
 
 class Client:
     def __init__(self, args):
         self.peer = ''
         self.console_input = []
         self.state = S_OFFLINE
-        self.args = args
+        self.system_args = args
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sm = ClientSM()
+        
+        # Initialize GUI passing self as reference
+        self.gui = GUI(args, self)
+        
+        self.running = True
 
+    def login(self, name):
+        # Connect to server
+        try:
+            self.socket.connect(self.system_args)
+            mysend(self.socket, json.dumps({"action": "login", "name": name}))
+            response = json.loads(myrecv(self.socket))
+            
+            if response["status"] == "ok":
+                self.sm.set_state(S_LOGGEDIN)
+                self.sm.set_myname(name)
+                self.sm.socket = self.socket # Give SM access to socket
+                
+                # Start Receiving Thread
+                self.recv_thread = threading.Thread(target=self.recv_loop)
+                self.recv_thread.daemon = True
+                self.recv_thread.start()
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(f"Login Error: {e}")
+            return False
+
+    def send_to_server(self, msg):
+        # Pass user input to State Machine to handle logic/sending
+        # We pass an empty string as 'peer_msg' because this is user input
+        self.sm.proc(msg, "")
+
+    def recv_loop(self):
+        """
+        Background thread that listens for socket messages
+        and updates the GUI.
+        """
+        while self.running:
+            try:
+                msg = myrecv(self.socket)
+                if len(msg) > 0:
+                    # Pass incoming network msg to State Machine
+                    # We pass empty string as 'my_msg'
+                    output = self.sm.proc("", msg)
+                    
+                    # Update GUI
+                    if output:
+                        self.gui.process_incoming(output)
+                else:
+                    # Server closed connection
+                    break
+            except Exception as e:
+                print(f"Connection error: {e}")
+                break
+                
     def quit(self):
-        self.socket.shutdown(socket.SHUT_RDWR)
+        self.running = False
         self.socket.close()
 
-    def init_chat(self):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM )
-        svr = SERVER if self.args.d == None else (self.args.d, CHAT_PORT)
-        self.socket.connect(svr)
-        self.sm = csm.ClientSM(self.socket)
-        
-        # Start the GUI
-        # We pass the send/recv functions so the GUI can use the socket safely
-        self.gui = GUI(self.send, self.recv, self.sm, self.socket)
-
-    def send(self, msg):
-        mysend(self.socket, msg)
-
-    def recv(self):
-        return myrecv(self.socket)
-
-    def run_chat(self):
-        self.init_chat()
-        # This starts the GUI loop. The code waits here until the window closes.
-        # Note: We do NOT use the old while loop here anymore.
-        print("Starting GUI...")
-        self.quit()
+    def start(self):
+        self.gui.run()
