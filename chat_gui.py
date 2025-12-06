@@ -262,7 +262,7 @@ class ChatGUI:
         btn_row.pack(pady=5)
         self.connect_btn = mk_btn("Connect", self.on_connect)
         self.connect_btn.pack(side=tk.LEFT, padx=15)
-        self.game_btn = mk_btn("Play Game", self.on_start_game, tk.DISABLED)
+        self.game_btn = mk_btn("Play Game", self.on_start_game, tk.NORMAL)
         self.game_btn.pack(side=tk.LEFT, padx=15)
         self.who_btn = mk_btn("Online Users", self.on_who)
         self.who_btn.pack(side=tk.LEFT, padx=15)
@@ -397,16 +397,20 @@ class ChatGUI:
             self.game_btn.config(state=tk.NORMAL)
 
     def on_start_game(self):
-        if not self.peer_name: return
+        # REMOVE or COMMENT OUT THIS LINE:
+        # if not self.peer_name: return 
+    
+        # Keep the rest:
         if self.game_window:
             self.game_window.window.lift()
             return
         try:
-            # Change TicTacGame to TetrisGame here
-            self.game_window = TetrisGame(self.window, self.send_callback, self.peer_name)
-            self.add_system_message("Tetris Game started")
+            # Pass "Solo Player" if no peer name exists
+            player_name = self.peer_name if self.peer_name else "Solo Player"
+            self.game_window = TetrisGame(self.window, self.send_callback, player_name)
+            self.add_system_message("Game started")
         except Exception as e:
-            print(e)
+            print(f"Game Error: {e}")
 
     def on_who(self):
         self.send_callback("who")

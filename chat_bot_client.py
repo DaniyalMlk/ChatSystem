@@ -28,8 +28,9 @@ class ChatBotClient:
                 print(f"Thinking about: {prompt}...")
                 
                 # SiliconFlow uses this specific model name
+                # Inside chat_bot_client.py, find the ask() method and update the model line:
                 response = self.client.chat.completions.create(
-                    model="deepseek-ai/deepseek-v2-chat", 
+                    model="deepseek-ai/DeepSeek-V2.5",  # <--- UPDATED MODEL NAME
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant."},
                         {"role": "user", "content": prompt}
