@@ -133,7 +133,29 @@ class ClientStateMachine:
     
     def _handle_user_list(self, data):
         """Handle online user list"""
-        users = data.get('results', [])
+        results = data.get('results', '')
+        
+        # Parse the results string to extract usernames
+        users = []
+        if isinstance(results, str):
+            # Server returns format: "Users: ----\n{'name1': 0, 'name2': 0}\n..."
+            # Extract the dictionary part
+            import re
+            match = re.search(r'\{([^}]+)\}', results)
+            if match:
+                # Extract usernames from the dictionary
+                user_dict_str = '{' + match.group(1) + '}'
+                try:
+                    # Parse it properly
+                    for line in results.split('\n'):
+                        if ':' in line and "'" in line:
+                            # Extract username between quotes
+                            parts = line.split("'")
+                            for i in range(1, len(parts), 2):
+                                if parts[i] and parts[i] != 'Users' and parts[i] != 'Groups':
+                                    users.append(parts[i])
+                except:
+                    pass
         
         if self.gui:
             self.gui.handle_user_list(users)
