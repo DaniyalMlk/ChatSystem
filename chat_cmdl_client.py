@@ -10,5 +10,5 @@ def main():
     client = Client((args.host, args.port))
     client.start()
 
-if __name__ == "__main__":
+if name == "__main__":
     main()

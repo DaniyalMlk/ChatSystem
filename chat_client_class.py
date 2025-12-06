@@ -75,4 +75,8 @@ class Client:
         self.socket.close()
 
     def start(self):
+<<<<<<< HEAD
         self.gui.run()
+=======
+        self.gui.run()
+>>>>>>> 30b74ad713e94c1b6700511de2bdc39b0e40b13a

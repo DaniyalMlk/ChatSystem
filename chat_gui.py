@@ -89,7 +89,10 @@ class GUI:
         # Display my own message locally (if chatting)
         if self.console.sm.get_state() == 2: # S_CHATTING
              self.display_text(f"[Me]: {msg}\n", 'neutral')
+<<<<<<< HEAD
 
+=======
+>>>>>>> 30b74ad713e94c1b6700511de2bdc39b0e40b13a
     def display_text(self, text, tag='neutral'):
         self.chat_area.config(state='normal')
         self.chat_area.insert(tk.END, text, tag)
