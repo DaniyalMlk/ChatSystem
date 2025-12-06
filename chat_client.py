@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple Chat Client with Clean GUI
-Perfect for two developers collaborating in real-time
+Fixed Simple Chat Client with better GUI handling
 """
 
 import tkinter as tk
@@ -24,12 +23,12 @@ class SimpleChatClient:
         self.connected = False
         self.username = os.getenv('USER', 'Developer')
         
-        # Color scheme (clean and professional)
+        # Color scheme
         self.colors = {
             'bg': '#f0f0f0',
             'fg': '#333333',
             'input': '#ffffff',
-            'button': '#007ACC',  # VS Code blue
+            'button': '#007ACC',
             'button_text': '#ffffff',
             'my_msg': '#e3f2fd',
             'other_msg': '#f5f5f5',
@@ -37,23 +36,17 @@ class SimpleChatClient:
             'border': '#cccccc'
         }
         
-        # Apply theme
         self.root.configure(bg=self.colors['bg'])
-        
-        # Create UI
         self.create_connection_screen()
         
     def create_connection_screen(self):
         """Create the connection/login screen"""
-        # Clear window
         for widget in self.root.winfo_children():
             widget.destroy()
         
-        # Main container
         container = tk.Frame(self.root, bg=self.colors['bg'])
         container.place(relx=0.5, rely=0.5, anchor='center')
         
-        # Title
         title = tk.Label(
             container,
             text="👥 Simple Dev Chat",
@@ -63,69 +56,27 @@ class SimpleChatClient:
         )
         title.pack(pady=20)
         
-        # Connection frame
         conn_frame = tk.Frame(container, bg='white', relief='solid', bd=1)
         conn_frame.pack(padx=20, pady=10)
         
-        # Inner padding
         inner = tk.Frame(conn_frame, bg='white')
         inner.pack(padx=30, pady=30)
         
-        # Server input
-        tk.Label(
-            inner,
-            text="Server IP:",
-            font=('Segoe UI', 11),
-            bg='white'
-        ).grid(row=0, column=0, sticky='e', padx=10, pady=10)
-        
-        self.server_entry = tk.Entry(
-            inner,
-            font=('Segoe UI', 11),
-            width=20,
-            relief='solid',
-            bd=1
-        )
+        tk.Label(inner, text="Server IP:", font=('Segoe UI', 11), bg='white').grid(row=0, column=0, sticky='e', padx=10, pady=10)
+        self.server_entry = tk.Entry(inner, font=('Segoe UI', 11), width=20, relief='solid', bd=1)
         self.server_entry.insert(0, "127.0.0.1")
         self.server_entry.grid(row=0, column=1, padx=10, pady=10)
         
-        # Port input
-        tk.Label(
-            inner,
-            text="Port:",
-            font=('Segoe UI', 11),
-            bg='white'
-        ).grid(row=1, column=0, sticky='e', padx=10, pady=10)
-        
-        self.port_entry = tk.Entry(
-            inner,
-            font=('Segoe UI', 11),
-            width=20,
-            relief='solid',
-            bd=1
-        )
+        tk.Label(inner, text="Port:", font=('Segoe UI', 11), bg='white').grid(row=1, column=0, sticky='e', padx=10, pady=10)
+        self.port_entry = tk.Entry(inner, font=('Segoe UI', 11), width=20, relief='solid', bd=1)
         self.port_entry.insert(0, "5555")
         self.port_entry.grid(row=1, column=1, padx=10, pady=10)
         
-        # Username input
-        tk.Label(
-            inner,
-            text="Your Name:",
-            font=('Segoe UI', 11),
-            bg='white'
-        ).grid(row=2, column=0, sticky='e', padx=10, pady=10)
-        
-        self.username_entry = tk.Entry(
-            inner,
-            font=('Segoe UI', 11),
-            width=20,
-            relief='solid',
-            bd=1
-        )
+        tk.Label(inner, text="Your Name:", font=('Segoe UI', 11), bg='white').grid(row=2, column=0, sticky='e', padx=10, pady=10)
+        self.username_entry = tk.Entry(inner, font=('Segoe UI', 11), width=20, relief='solid', bd=1)
         self.username_entry.insert(0, self.username)
         self.username_entry.grid(row=2, column=1, padx=10, pady=10)
         
-        # Connect button
         connect_btn = tk.Button(
             inner,
             text="Connect",
@@ -140,7 +91,6 @@ class SimpleChatClient:
         )
         connect_btn.grid(row=3, column=0, columnspan=2, pady=20)
         
-        # Quick connect info
         info_text = tk.Label(
             container,
             text="💡 Tip: Share your IP with your partner\nRun 'python simple_chat_server.py' first",
@@ -151,7 +101,6 @@ class SimpleChatClient:
         )
         info_text.pack(pady=10)
         
-        # Bind Enter key
         self.root.bind('<Return>', lambda e: self.connect_to_server())
         
     def connect_to_server(self):
@@ -170,7 +119,6 @@ class SimpleChatClient:
             messagebox.showerror("Error", "Invalid port number")
             return
         
-        # Try to connect
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((server_ip, port))
@@ -183,18 +131,21 @@ class SimpleChatClient:
             
             self.connected = True
             
-            # Start receive thread
+            # Create chat interface FIRST
+            self.create_chat_interface()
+            
+            # THEN start receive thread
             receive_thread = threading.Thread(target=self.receive_messages, daemon=True)
             receive_thread.start()
             
-            # Create chat interface
-            self.create_chat_interface()
+            # Add welcome message
+            self.add_system_message(f"Connected to chat server as {self.username}")
             
         except Exception as e:
             messagebox.showerror("Connection Error", f"Could not connect:\n{str(e)}")
             
     def create_chat_interface(self):
-        """Create the main chat interface"""
+        """Create the main chat interface with proper initialization"""
         # Clear window
         for widget in self.root.winfo_children():
             widget.destroy()
@@ -204,12 +155,13 @@ class SimpleChatClient:
         main_container.pack(fill='both', expand=True, padx=10, pady=10)
         
         # Header
-        header = tk.Frame(main_container, bg=self.colors['bg'])
+        header = tk.Frame(main_container, bg=self.colors['bg'], height=40)
         header.pack(fill='x', pady=(0, 10))
+        header.pack_propagate(False)
         
         # Title and status
         title_frame = tk.Frame(header, bg=self.colors['bg'])
-        title_frame.pack(side='left')
+        title_frame.pack(side='left', fill='y')
         
         tk.Label(
             title_frame,
@@ -217,7 +169,7 @@ class SimpleChatClient:
             font=('Segoe UI', 14, 'bold'),
             bg=self.colors['bg'],
             fg=self.colors['fg']
-        ).pack(side='left')
+        ).pack(side='left', pady=5)
         
         self.status_label = tk.Label(
             title_frame,
@@ -226,49 +178,60 @@ class SimpleChatClient:
             bg=self.colors['bg'],
             fg='#4CAF50'
         )
-        self.status_label.pack(side='left')
+        self.status_label.pack(side='left', pady=5)
         
         # Users online
         self.users_label = tk.Label(
             header,
-            text="Users: ",
+            text="Users: Loading...",
             font=('Segoe UI', 10),
             bg=self.colors['bg'],
             fg='#666666'
         )
-        self.users_label.pack(side='right', padx=10)
+        self.users_label.pack(side='right', padx=10, pady=5)
         
-        # Chat display
-        chat_frame = tk.Frame(main_container, relief='solid', bd=1)
-        chat_frame.pack(fill='both', expand=True)
+        # Chat display with proper frame
+        chat_container = tk.Frame(main_container, bg=self.colors['bg'])
+        chat_container.pack(fill='both', expand=True, pady=(0, 10))
         
+        # Create scrolled text widget
         self.chat_display = scrolledtext.ScrolledText(
-            chat_frame,
+            chat_container,
             wrap='word',
             font=('Segoe UI', 10),
             bg='white',
             fg=self.colors['fg'],
-            relief='flat',
+            relief='solid',
+            bd=1,
             padx=10,
-            pady=10
+            pady=10,
+            height=20
         )
         self.chat_display.pack(fill='both', expand=True)
         
         # Configure tags
-        self.chat_display.tag_config('my_message', background=self.colors['my_msg'], lmargin1=10, lmargin2=10, rmargin=100)
-        self.chat_display.tag_config('other_message', background=self.colors['other_msg'], lmargin1=10, lmargin2=10, rmargin=100)
-        self.chat_display.tag_config('system', background=self.colors['system'], justify='center', font=('Segoe UI', 9, 'italic'))
+        self.chat_display.tag_config('my_message', background=self.colors['my_msg'], 
+                                     lmargin1=10, lmargin2=10, rmargin=100)
+        self.chat_display.tag_config('other_message', background=self.colors['other_msg'], 
+                                     lmargin1=10, lmargin2=10, rmargin=100)
+        self.chat_display.tag_config('system', background=self.colors['system'], 
+                                     justify='center', font=('Segoe UI', 9, 'italic'))
         self.chat_display.tag_config('username', font=('Segoe UI', 10, 'bold'))
         self.chat_display.tag_config('timestamp', foreground='#999999', font=('Segoe UI', 8))
         
-        # Make read-only
+        # Initially editable for testing
+        self.chat_display.insert('1.0', "Chat connected. Type a message below and press Enter to send.\n\n")
         self.chat_display.config(state='disabled')
         
-        # Input area
-        input_frame = tk.Frame(main_container, bg=self.colors['bg'])
-        input_frame.pack(fill='x', pady=(10, 0))
+        # Input area frame
+        input_container = tk.Frame(main_container, bg=self.colors['bg'])
+        input_container.pack(fill='x', pady=(0, 5))
         
-        # Message input
+        # Message input with frame
+        input_frame = tk.Frame(input_container, bg=self.colors['bg'])
+        input_frame.pack(fill='x')
+        
+        # Text input
         self.message_input = tk.Text(
             input_frame,
             height=3,
@@ -278,12 +241,13 @@ class SimpleChatClient:
             relief='solid',
             bd=1,
             padx=10,
-            pady=10
+            pady=10,
+            width=50
         )
         self.message_input.pack(side='left', fill='both', expand=True)
         
         # Send button
-        send_btn = tk.Button(
+        self.send_btn = tk.Button(
             input_frame,
             text="Send",
             command=self.send_message,
@@ -291,11 +255,11 @@ class SimpleChatClient:
             fg=self.colors['button_text'],
             font=('Segoe UI', 10, 'bold'),
             padx=20,
-            pady=10,
             relief='flat',
-            cursor='hand2'
+            cursor='hand2',
+            height=2
         )
-        send_btn.pack(side='right', padx=(10, 0))
+        self.send_btn.pack(side='right', padx=(10, 0), fill='y')
         
         # Keyboard shortcuts info
         shortcut_label = tk.Label(
@@ -305,19 +269,30 @@ class SimpleChatClient:
             bg=self.colors['bg'],
             fg='#999999'
         )
-        shortcut_label.pack(pady=(5, 0))
+        shortcut_label.pack()
         
-        # Bind keys
+        # Bind events
         self.message_input.bind('<Return>', self.handle_enter)
-        self.message_input.bind('<Shift-Return>', lambda e: None)  # Allow shift+enter for new line
+        self.message_input.bind('<KeyRelease>', self.check_input)
         self.root.bind('<Control-q>', lambda e: self.quit_app())
         
         # Focus on input
-        self.message_input.focus()
+        self.message_input.focus_set()
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
+        # Force update
+        self.root.update_idletasks()
+        
+    def check_input(self, event=None):
+        """Enable/disable send button based on input"""
+        content = self.message_input.get('1.0', 'end-1c').strip()
+        if content:
+            self.send_btn.config(state='normal')
+        else:
+            self.send_btn.config(state='disabled')
+            
     def handle_enter(self, event):
         """Handle Enter key press"""
         if event.state & 0x0001:  # Shift is pressed
@@ -330,22 +305,30 @@ class SimpleChatClient:
         """Send a message"""
         message = self.message_input.get('1.0', 'end-1c').strip()
         
-        if not message or not self.connected:
+        if not message:
+            return
+            
+        if not self.connected or not self.socket:
+            self.add_system_message("Not connected to server!")
             return
         
-        # Send to server
         try:
+            # Send to server
             msg_data = {
                 'type': 'message',
                 'content': message
             }
             self.socket.send(json.dumps(msg_data).encode('utf-8'))
             
-            # Clear input
+            # Clear input immediately
             self.message_input.delete('1.0', 'end')
             
+            # Debug message
+            print(f"Sent: {message}")
+            
         except Exception as e:
-            self.add_system_message(f"Failed to send message: {e}")
+            self.add_system_message(f"Failed to send: {str(e)}")
+            print(f"Send error: {e}")
             
     def receive_messages(self):
         """Receive messages from server"""
@@ -357,9 +340,12 @@ class SimpleChatClient:
                     
                 # Parse message
                 message = json.loads(data)
-                self.handle_message(message)
                 
-            except json.JSONDecodeError:
+                # Use GUI thread for updates
+                self.root.after(0, self.handle_message, message)
+                
+            except json.JSONDecodeError as e:
+                print(f"JSON error: {e}")
                 continue
             except Exception as e:
                 print(f"Receive error: {e}")
@@ -367,15 +353,21 @@ class SimpleChatClient:
         
         # Disconnected
         self.connected = False
-        self.add_system_message("Disconnected from server")
-        self.status_label.config(text=" • Disconnected", fg='#f44336')
+        self.root.after(0, self.handle_disconnect)
         
+    def handle_disconnect(self):
+        """Handle disconnection in GUI thread"""
+        self.add_system_message("Disconnected from server")
+        if hasattr(self, 'status_label'):
+            self.status_label.config(text=" • Disconnected", fg='#f44336')
+        if hasattr(self, 'send_btn'):
+            self.send_btn.config(state='disabled')
+            
     def handle_message(self, message):
-        """Handle received message"""
+        """Handle received message in GUI thread"""
         msg_type = message.get('type')
         
         if msg_type == 'message':
-            # Chat message
             username = message.get('username')
             content = message.get('content')
             timestamp = message.get('timestamp')
@@ -389,7 +381,6 @@ class SimpleChatClient:
                 self.add_chat_message(username, content, timestamp, is_own=False)
                 
         elif msg_type == 'system':
-            # System message
             self.add_system_message(message.get('message', ''))
             
             # Update users list
@@ -398,7 +389,6 @@ class SimpleChatClient:
                 self.update_users(users)
                 
         elif msg_type == 'user_joined':
-            # User joined
             username = message.get('username')
             self.add_system_message(f"{username} joined the chat")
             
@@ -407,7 +397,6 @@ class SimpleChatClient:
                 self.update_users(users)
                 
         elif msg_type == 'user_left':
-            # User left
             username = message.get('username')
             self.add_system_message(f"{username} left the chat")
             
@@ -416,11 +405,13 @@ class SimpleChatClient:
                 self.update_users(users)
                 
         elif msg_type == 'error':
-            # Error message
             self.add_system_message(f"Error: {message.get('message', 'Unknown error')}")
             
     def add_chat_message(self, username, content, timestamp, is_own=False):
         """Add a chat message to display"""
+        if not hasattr(self, 'chat_display'):
+            return
+            
         self.chat_display.config(state='normal')
         
         # Parse timestamp
@@ -430,30 +421,34 @@ class SimpleChatClient:
         except:
             time_str = datetime.now().strftime('%H:%M')
         
-        # Add message
+        # Add message with proper formatting
         if is_own:
-            # Our message (right-aligned styling)
-            self.chat_display.insert('end', f"\n{username} ", ('username', 'my_message'))
+            self.chat_display.insert('end', f"{username} ", ('username', 'my_message'))
             self.chat_display.insert('end', f"• {time_str}\n", ('timestamp', 'my_message'))
-            self.chat_display.insert('end', f"{content}\n", 'my_message')
+            self.chat_display.insert('end', f"{content}\n\n", 'my_message')
         else:
-            # Other user's message
-            self.chat_display.insert('end', f"\n{username} ", ('username', 'other_message'))
+            self.chat_display.insert('end', f"{username} ", ('username', 'other_message'))
             self.chat_display.insert('end', f"• {time_str}\n", ('timestamp', 'other_message'))
-            self.chat_display.insert('end', f"{content}\n", 'other_message')
+            self.chat_display.insert('end', f"{content}\n\n", 'other_message')
         
         self.chat_display.config(state='disabled')
         self.chat_display.see('end')
         
     def add_system_message(self, message):
         """Add a system message"""
+        if not hasattr(self, 'chat_display'):
+            return
+            
         self.chat_display.config(state='normal')
-        self.chat_display.insert('end', f"\n— {message} —\n", 'system')
+        self.chat_display.insert('end', f"— {message} —\n\n", 'system')
         self.chat_display.config(state='disabled')
         self.chat_display.see('end')
         
     def update_users(self, users):
         """Update the users list"""
+        if not hasattr(self, 'users_label'):
+            return
+            
         if len(users) == 1:
             self.users_label.config(text=f"Users: {users[0]} (waiting for partner...)")
         else:
@@ -476,17 +471,10 @@ def main():
     """Run the chat client"""
     root = tk.Tk()
     
-    # Set icon if available
-    try:
-        root.iconbitmap(default='chat.ico')
-    except:
-        pass
-    
     app = SimpleChatClient(root)
     
     # Check for command line arguments
     if len(sys.argv) > 1:
-        # Auto-connect if server IP provided
         server_ip = sys.argv[1]
         if ':' in server_ip:
             ip, port = server_ip.split(':')
