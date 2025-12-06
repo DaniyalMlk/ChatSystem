@@ -12,13 +12,17 @@ class ClientSM:
     def set_state(self, state):
         self.state = state
 
-    def set_myname(self, name):
-        self.me = name
-
     def get_state(self):
         return self.state
 
+    def set_myname(self, name):
+        self.me = name
+
+    def get_myname(self):
+        return self.me
+
     def connect_to(self, peer):
+        # Sends a connection request to the server
         msg = json.dumps({"action":"connect", "target":peer})
         mysend(self.s, msg)
         return True
