@@ -15,7 +15,12 @@ class Server:
         # Start server
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server.bind(SERVER)
+        
+        # --- CHANGED LINE BELOW ---
+        # 0.0.0.0 allows connections from other computers on your network
+        self.server.bind(('0.0.0.0', CHAT_PORT)) 
+        # --------------------------
+        
         self.server.listen(5)
         self.all_sockets.append(self.server)
         print(f"Server started on port {CHAT_PORT}...")
