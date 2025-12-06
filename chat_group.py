@@ -1,84 +1,173 @@
-S_ALONE = 0
-S_TALKING = 1
+"""
+chat_group.py - Group management for chat system
+Handles user groups, connections, and room management
+"""
 
 class Group:
+    """Manages chat groups and user connections"""
+    
     def __init__(self):
-        self.members = {}
-        self.chat_grps = {}
-        self.grp_ever = 0
-
+        """Initialize group manager"""
+        # Dictionary: {username: group_id}
+        # group_id = 0 means not in any group (logged in but not chatting)
+        self.users = {}
+        
+        # Dictionary: {group_id: [list of usernames]}
+        self.groups = {}
+        
+        # Counter for creating unique group IDs
+        self.group_counter = 1
+    
     def join(self, name):
-        self.members[name] = S_ALONE
-        return
-
-    def is_member(self, name):
-        return name in self.members.keys()
-
+        """
+        Add a user to the system (login)
+        
+        Args:
+            name: Username
+        """
+        if name not in self.users:
+            self.users[name] = 0  # 0 = logged in, no group
+    
     def leave(self, name):
-        self.disconnect(name)
-        del self.members[name]
-        return
-
-    def find_group(self, name):
-        found = False
-        group_key = 0
-        for k in self.chat_grps.keys():
-            if name in self.chat_grps[k]:
-                found = True
-                group_key = k
-                break
-        return found, group_key
-
-    def connect(self, me, peer):
-        peer_in_group, group_key = self.find_group(peer)
-        # if peer is in a group, join it
-        if peer_in_group == True:
-            print(peer, "is talking already, connect!")
-            if me not in self.chat_grps[group_key]:
-                self.chat_grps[group_key].append(me)
-                self.members[me] = S_TALKING
-        else:
-            # otherwise, create a new group
-            print(peer, "is idle as well")
-            self.grp_ever += 1
-            group_key = self.grp_ever
-            self.chat_grps[group_key] = []
-            self.chat_grps[group_key].append(me)
-            self.chat_grps[group_key].append(peer)
-            self.members[me] = S_TALKING
-            self.members[peer] = S_TALKING
-        return
-
-    def disconnect(self, me):
-        # find myself in the group, quit
-        in_group, group_key = self.find_group(me)
-        if in_group == True:
-            self.chat_grps[group_key].remove(me)
-            self.members[me] = S_ALONE
-            # peer may be the only one left as well...
-            if len(self.chat_grps[group_key]) == 1:
-                peer = self.chat_grps[group_key].pop()
-                self.members[peer] = S_ALONE
-                del self.chat_grps[group_key]
-        return
-
-    def list_all(self, me):
-        # a simple minded implementation
-        full_list = "Users: ------------" + "\n"
-        full_list += str(self.members) + "\n"
-        full_list += "Groups: -----------" + "\n"
-        full_list += str(self.chat_grps) + "\n"
-        return full_list
-
-    def list_me(self, me):
-        # return a list, "me" followed by other peers in my group
-        if me in self.members.keys():
-            my_list = []
-            my_list.append(me)
-            in_group, group_key = self.find_group(me)
-            if in_group == True:
-                for member in self.chat_grps[group_key]:
-                    if member != me:
-                        my_list.append(member)
-            return my_list
-        return []
+        """
+        Remove a user from the system (logout)
+        
+        Args:
+            name: Username
+        """
+        if name in self.users:
+            # First disconnect from any group
+            self.disconnect(name)
+            # Then remove from users
+            del self.users[name]
+    
+    def is_member(self, name):
+        """
+        Check if user is logged in
+        
+        Args:
+            name: Username
+            
+        Returns:
+            True if user exists, False otherwise
+        """
+        return name in self.users
+    
+    def connect(self, name1, name2):
+        """
+        Connect two users in a private chat
+        
+        Args:
+            name1: First user
+            name2: Second user
+        """
+        # If either user is already in a group, disconnect them first
+        if self.users.get(name1, 0) != 0:
+            self.disconnect(name1)
+        if self.users.get(name2, 0) != 0:
+            self.disconnect(name2)
+        
+        # Create new group
+        group_id = self.group_counter
+        self.group_counter += 1
+        
+        # Assign both users to this group
+        self.users[name1] = group_id
+        self.users[name2] = group_id
+        
+        # Create group member list
+        self.groups[group_id] = [name1, name2]
+    
+    def disconnect(self, name):
+        """
+        Disconnect a user from their current group
+        
+        Args:
+            name: Username
+        """
+        if name not in self.users:
+            return
+        
+        group_id = self.users[name]
+        
+        if group_id == 0:
+            # Not in any group
+            return
+        
+        # Remove user from group
+        self.users[name] = 0
+        
+        if group_id in self.groups:
+            # Remove from group member list
+            if name in self.groups[group_id]:
+                self.groups[group_id].remove(name)
+            
+            # If group is empty, delete it
+            if len(self.groups[group_id]) == 0:
+                del self.groups[group_id]
+            else:
+                # Disconnect remaining members too (since it's a private chat)
+                for member in self.groups[group_id]:
+                    self.users[member] = 0
+                del self.groups[group_id]
+    
+    def list_me(self, name):
+        """
+        List all members in the same group as the user
+        
+        Args:
+            name: Username
+            
+        Returns:
+            List of usernames in the same group (including the user)
+        """
+        if name not in self.users:
+            return []
+        
+        group_id = self.users[name]
+        
+        if group_id == 0:
+            # Not in any group
+            return [name]
+        
+        if group_id in self.groups:
+            return self.groups[group_id].copy()
+        
+        return [name]
+    
+    def list_all(self, name):
+        """
+        List all users and groups (for debugging/admin)
+        
+        Args:
+            name: Username requesting the list
+            
+        Returns:
+            Formatted string with users and groups
+        """
+        result = "Users: ------------\n"
+        result += str(self.users) + "\n"
+        result += "Groups: -----------\n"
+        result += str(self.groups) + "\n"
+        return result
+    
+    def get_online_users(self):
+        """
+        Get list of all online users
+        
+        Returns:
+            List of usernames
+        """
+        return list(self.users.keys())
+    
+    def get_group_id(self, name):
+        """
+        Get the group ID for a user
+        
+        Args:
+            name: Username
+            
+        Returns:
+            Group ID (0 if not in a group)
+        """
+        return self.users.get(name, 0)

@@ -4,19 +4,18 @@ Contains mysend, myrecv, and configuration constants
 """
 
 import struct
-import json
 
 # Configuration
 CLIENT_IP = '127.0.0.1'
 SERVER_IP = '127.0.0.1'
-SERVER_PORT = 1112  # Match your server's port
+SERVER_PORT = 1112
 CHAT_PORT = 1112
 
 # Server address tuple
 SERVER = (SERVER_IP, SERVER_PORT)
 
-# Message length prefix size
-SIZE_SPEC = 'I'  # Unsigned int (4 bytes)
+# Message length prefix size (4 bytes for unsigned int)
+SIZE_SPEC = 'I'
 
 def mysend(s, msg):
     """
@@ -26,7 +25,7 @@ def mysend(s, msg):
         s: Socket object
         msg: Message string to send
     """
-    # Encode message to bytes
+    # Encode message to bytes if it's a string
     if isinstance(msg, str):
         msg_bytes = msg.encode('utf-8')
     else:
@@ -38,7 +37,6 @@ def mysend(s, msg):
     
     # Send length + message
     s.sendall(length_prefix + msg_bytes)
-    print(f"[DEBUG] Sent: {msg[:100] if len(msg) < 100 else msg[:100] + '...'}")
 
 def myrecv(s):
     """
@@ -48,7 +46,7 @@ def myrecv(s):
         s: Socket object
         
     Returns:
-        Decoded message string
+        Decoded message string or None if connection closed
     """
     # First receive the length prefix (4 bytes)
     length_bytes = b''
@@ -70,6 +68,4 @@ def myrecv(s):
         msg_bytes += chunk
     
     # Decode and return
-    msg = msg_bytes.decode('utf-8')
-    print(f"[DEBUG] Received: {msg[:100] if len(msg) < 100 else msg[:100] + '...'}")
-    return msg
+    return msg_bytes.decode('utf-8')

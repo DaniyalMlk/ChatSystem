@@ -16,12 +16,6 @@ class FeatureManager:
         Args:
             chatbot_client: Instance of ChatBotClient (optional)
         """
-        """
-        Initialize feature manager
-        
-        Args:
-            chatbot_client: Instance of ChatBotClient (optional)
-        """
         self.chatbot_client = chatbot_client
         self.sentiment_enabled = True
         self.chatbot_enabled = True
@@ -73,7 +67,6 @@ class FeatureManager:
                 response = self.chatbot_client.chat(query)
                 callback(f"Bot: {response}")
             else:
-                # Fallback if no chatbot available
                 callback(f"Bot: I received your message '{query}' but I'm not connected to an AI service.")
         except Exception as e:
             callback(f"Bot Error: {str(e)}")
@@ -117,7 +110,7 @@ class FeatureManager:
                 'label': label
             }
         except Exception as e:
-            print(f"Sentiment analysis error: {e}")
+            print(f"[WARN] Sentiment analysis error: {e}")
             return {
                 'polarity': 0.0,
                 'color': 'black',
@@ -178,32 +171,4 @@ class DummyChatBotClient:
         elif '?' in message:
             return "That's an interesting question! I'm a simple bot, so I might not have the best answer."
         else:
-            return f"I heard you say: '{message}'. I'm a simple bot, so I can only respond to basic greetings and questions."
-
-
-# Convenience function for standalone sentiment analysis
-def analyze_text_sentiment(text):
-    """
-    Standalone function to analyze sentiment
-    
-    Args:
-        text: Text to analyze
-        
-    Returns:
-        Tuple of (polarity, subjectivity, label)
-    """
-    try:
-        blob = TextBlob(text)
-        polarity = blob.sentiment.polarity
-        subjectivity = blob.sentiment.subjectivity
-        
-        if polarity > 0.1:
-            label = 'positive'
-        elif polarity < -0.1:
-            label = 'negative'
-        else:
-            label = 'neutral'
-        
-        return (polarity, subjectivity, label)
-    except:
-        return (0.0, 0.0, 'neutral')
+            return f"I heard you say: '{message}'. I'm a simple bot, so I can only respond to basic greetings!"

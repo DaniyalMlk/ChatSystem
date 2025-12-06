@@ -1,11 +1,11 @@
 """
 game_client.py - Tic-Tac-Toe Game Client
 Implements a graphical Tic-Tac-Toe game that communicates through the chat socket
+(Will be replaced with Pac-Man in Phase 3)
 """
 
 import tkinter as tk
 from tkinter import messagebox
-import json
 
 class TicTacGame:
     """Tic-Tac-Toe game GUI that uses the existing chat socket"""
@@ -25,8 +25,8 @@ class TicTacGame:
         
         # Game state
         self.board = ['' for _ in range(9)]
-        self.current_player = 'X'  # X always starts
-        self.my_symbol = None  # Will be set when game starts
+        self.current_player = 'X'
+        self.my_symbol = None
         self.game_active = False
         
         # Create game window
@@ -88,7 +88,7 @@ class TicTacGame:
     def start_game(self):
         """Send game start request to opponent"""
         self.send_game_message("GAME_START")
-        self.my_symbol = 'X'  # First player is X
+        self.my_symbol = 'X'
         self.game_active = True
         self.status_label.config(text="Your turn (X)")
         self.start_btn.config(state=tk.DISABLED)
@@ -101,7 +101,7 @@ class TicTacGame:
         self.game_active = True
         
         for btn in self.buttons:
-            btn.config(text='', state=tk.NORMAL)
+            btn.config(text='', state=tk.NORMAL, bg='SystemButtonFace')
         
         if self.my_symbol == 'X':
             self.status_label.config(text="Your turn (X)")
@@ -154,7 +154,6 @@ class TicTacGame:
     def receive_move(self, move_data):
         """Process move received from opponent"""
         if move_data == "GAME_START":
-            # Opponent started the game
             self.my_symbol = 'O'
             self.game_active = True
             self.status_label.config(text="Opponent's turn")
@@ -187,7 +186,7 @@ class TicTacGame:
                 self.status_label.config(text=f"Your turn ({self.my_symbol})")
                 
         except (ValueError, IndexError) as e:
-            print(f"Error processing move: {e}")
+            print(f"[ERROR] Processing move: {e}")
     
     def check_winner(self):
         """Check if there's a winner"""
