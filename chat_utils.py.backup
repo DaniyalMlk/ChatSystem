@@ -3,7 +3,6 @@ chat_utils.py - Utility functions for chat system
 Contains mysend, myrecv, and configuration constants
 """
 
-import struct
 import json
 
 # Configuration
@@ -26,11 +25,10 @@ def mysend(s, msg):
         s: Socket object
         msg: Message string to send
     """
+    import struct
+    
     # Encode message to bytes
-    if isinstance(msg, str):
-        msg_bytes = msg.encode('utf-8')
-    else:
-        msg_bytes = msg
+    msg_bytes = msg.encode('utf-8')
     
     # Create length prefix (4 bytes, unsigned int)
     length = len(msg_bytes)
@@ -38,7 +36,6 @@ def mysend(s, msg):
     
     # Send length + message
     s.sendall(length_prefix + msg_bytes)
-    print(f"[DEBUG] Sent: {msg[:100] if len(msg) < 100 else msg[:100] + '...'}")
 
 def myrecv(s):
     """
@@ -50,6 +47,8 @@ def myrecv(s):
     Returns:
         Decoded message string
     """
+    import struct
+    
     # First receive the length prefix (4 bytes)
     length_bytes = b''
     while len(length_bytes) < 4:
@@ -70,6 +69,4 @@ def myrecv(s):
         msg_bytes += chunk
     
     # Decode and return
-    msg = msg_bytes.decode('utf-8')
-    print(f"[DEBUG] Received: {msg[:100] if len(msg) < 100 else msg[:100] + '...'}")
-    return msg
+    return msg_bytes.decode('utf-8')

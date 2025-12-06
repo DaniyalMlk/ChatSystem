@@ -18,7 +18,7 @@ def main():
     
     # Check if custom server address is provided
     server_ip = "127.0.0.1"  # Default to localhost
-    server_port = 9009  # Default port
+    server_port = 1112  # Default port
     
     if len(sys.argv) > 1:
         server_ip = sys.argv[1]
