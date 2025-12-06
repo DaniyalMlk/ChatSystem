@@ -2,7 +2,12 @@
 chat_gui.py - Premium iOS-Style Dark Theme
 FIXED: Pixel-perfect vertical centering for macOS/Windows
 """
-
+# ... existing imports ...
+from datetime import datetime
+# --- ADD THESE NEW IMPORTS ---
+from PIL import Image, ImageTk
+from image_client import ImageGenClient
+# -----------------------------
 import tkinter as tk
 from tkinter import messagebox, simpledialog, font
 from datetime import datetime
@@ -167,6 +172,13 @@ class ChatGUI:
             class Dummy: pass
             bot_client = Dummy()
         self.feature_manager = FeatureManager(bot_client)
+        # --- ADD THIS SECTION ---
+        try:
+            self.image_client = ImageGenClient()
+        except Exception as e:
+            print(f"Image client failed to load: {e}")
+            self.image_client = None
+        # ------------------------
         
         self.window = tk.Tk()
         self.window.title("Messages")
@@ -176,7 +188,36 @@ class ChatGUI:
         self.window.protocol("WM_DELETE_WINDOW", self.on_quit)
         
         self._build_ui()
+    # --- ADD THIS NEW METHOD TO ChatGUI CLASS ---
+    def add_image_bubble(self, tk_image, is_mine=True, timestamp=None, sender="AI"):
+        wrapper = tk.Frame(self.scroll_frame, bg=COLORS['bg'])
+        wrapper.pack(fill=tk.X, padx=20, pady=8)
+        
+        if is_mine:
+            inner = tk.Frame(wrapper, bg=COLORS['bg'])
+            inner.pack(side=tk.RIGHT)
+            anchor = 'e'
+        else:
+            inner = tk.Frame(wrapper, bg=COLORS['bg'])
+            inner.pack(side=tk.LEFT)
+            anchor = 'w'
+            
+        # Use a Label to display the image
+        # We set bg to bubble colors to give it a nice border
+        bg_col = COLORS['bubble_mine'] if is_mine else COLORS['bubble_theirs']
+        img_label = tk.Label(inner, image=tk_image, bg=bg_col, bd=4, relief=tk.FLAT)
+        
+        # CRITICAL: Keep a reference to prevent garbage collection
+        img_label.image = tk_image 
+        img_label.pack(anchor=anchor)
+        
+        if timestamp:
+            tk.Label(inner, text=f"{sender} • {timestamp}", font=get_font(9), 
+                     bg=COLORS['bg'], fg=COLORS['text_sec']).pack(anchor=anchor, pady=(2,0))
 
+        self.canvas.update_idletasks()
+        self.canvas.yview_moveto(1.0)
+    # --------------------------------------------
     def _build_ui(self):
         # Header
         header = tk.Frame(self.window, bg=COLORS['panel'], height=70)
@@ -314,36 +355,50 @@ class ChatGUI:
         if not msg: return
         ts = datetime.now().strftime("%I:%M %p")
         
-        # 1. Add User Message
+        # 1. Add User Message immediately
         self.add_message_bubble(msg, True, ts)
         self.entry.delete(0, tk.END)
 
-        # 2. Check for Bot Trigger
-        if msg.startswith("@bot"):
-            user_query = msg[4:].strip()
-            
-            # A. Show "Thinking..." message immediately
-            self.add_message_bubble("Thinking...", False, ts, "DeepSeek")
-            
-            # Define what happens when the bot finishes
-            def on_bot_reply(reply_text):
-                # We use .after to ensure this runs on the main GUI thread safely
-                # Note: In a real app we would replace the "Thinking..." bubble, 
-                # but appending is safer for now.
-                self.window.after(0, lambda: self.add_message_bubble(reply_text, False, datetime.now().strftime("%I:%M %p"), "DeepSeek"))
-
-            # Ask the bot (this runs in background thread)
+        # --- NEW: CHECK FOR IMAGE COMMAND ---
+        if msg.startswith("/aipic:"):
+            # Extract prompt after the first ":" and strip whitespace
             try:
-                from chat_bot_client import ChatBotClient
-                if not hasattr(self, 'bot_client'):
-                    self.bot_client = ChatBotClient()
-                self.bot_client.ask(user_query, on_bot_reply)
-            except Exception as e:
-                self.add_message_bubble(f"System Error: {e}", False, ts, "System")
-            return
+                prompt = msg.split(":", 1)[1].strip()
+                if not prompt:
+                    self.add_system_message("Please provide a prompt after /aipic:")
+                    return
+            except IndexError:
+                self.add_system_message("Invalid format. Use /aipic: your prompt")
+                return
 
-        # 3. Game or Network Logic
-        if msg.startswith("GAME_"):
+            # Show a temporary system message
+            self.add_system_message(f"🎨 Generating image: '{prompt}'...")
+
+            # Define callback for when generation finishes
+            def on_image_ready(tk_image, error_msg):
+                timestamp = datetime.now().strftime("%I:%M %p")
+                if error_msg:
+                    # Show error if it failed
+                    self.window.after(0, lambda: self.add_message_bubble(error_msg, False, timestamp, "System Error"))
+                else:
+                    # Show image if succeeded
+                    self.window.after(0, lambda: self.add_image_bubble(tk_image, False, timestamp, "AI Artist"))
+
+            # Start generation
+            if self.image_client:
+                self.image_client.generate(prompt, on_image_ready)
+            else:
+                 self.add_system_message("Image client not connected.")
+            return
+        # ------------------------------------
+
+        # 2. Check for Bot Trigger (Your existing code)
+        if msg.startswith("@bot"):
+            # ... (keep your existing bot logic here) ...
+            pass # (placeholder for your existing bot code block)
+
+        # 3. Game or Network Logic (Your existing code)
+        elif msg.startswith("GAME_"):
             self.send_callback(msg)
         else:
             self.send_callback(msg)
