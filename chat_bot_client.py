@@ -17,7 +17,46 @@ class ChatBotClient:
         except Exception as e:
             print(f"❌ Bot connection failed: {e}")
             self.client = None
+    # --- ADD THIS NEW METHOD TO ChatBotClient CLASS ---
+    def analyze_text(self, text_data, mode, callback):
+        """
+        Analyzes chat history for summary or keywords using DeepSeek.
+        mode: 'summary' or 'keywords'
+        """
+        if not self.client:
+            callback("Error: Bot not connected.")
+            return
 
+        def run_analysis():
+            try:
+                # 1. Define specific instructions based on mode
+                if mode == "summary":
+                    system_prompt = "You are a helpful assistant. Summarize the following chat conversation briefly in 2-3 sentences."
+                else:
+                    system_prompt = "You are a helpful assistant. Extract the top 5 most important keywords or topics from this chat. Return them as a comma-separated list."
+
+                print(f"🧠 Analyzing chat for {mode}...")
+
+                # 2. Call API with the chat history
+                response = self.client.chat.completions.create(
+                    model="deepseek-ai/DeepSeek-V2.5", 
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Chat History:\n{text_data}"}
+                    ],
+                    stream=False
+                )
+                
+                reply = response.choices[0].message.content
+                print("Analysis complete.")
+                callback(reply)
+
+            except Exception as e:
+                print(f"Analysis Error: {e}")
+                callback(f"Analysis Error: {str(e)}")
+
+        thread = threading.Thread(target=run_analysis)
+        thread.start()
     def ask(self, prompt, callback):
         if not self.client:
             callback("Error: Bot not connected.")

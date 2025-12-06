@@ -164,6 +164,7 @@ class ChatGUI:
         self.peer_name = None
         self.game_window = None
         self.messages = []
+        self.chat_history_text = []
         
         try:
             from chat_bot_client import ChatBotClient
@@ -340,7 +341,13 @@ class ChatGUI:
         
         if timestamp:
             tk.Label(inner, text=timestamp, font=get_font(9), bg=COLORS['bg'], fg=COLORS['text_sec']).pack(anchor=anchor, pady=(2,0))
-
+        # --- ADD THIS LOGIC TO STORE HISTORY ---
+        # We store: "[Sender]: Message"
+        real_sender = "Me" if is_mine else (sender_name if sender_name else "Peer")
+        # Don't store system messages or commands in history to keep it clean
+        if not message.startswith("/") and not message.startswith("@bot"):
+             self.chat_history_text.append(f"[{real_sender}]: {message}")
+        # ---------------------------------------
         self.canvas.update_idletasks()
         self.canvas.yview_moveto(1.0)
 
@@ -355,13 +362,47 @@ class ChatGUI:
         if not msg: return
         ts = datetime.now().strftime("%I:%M %p")
         
-        # 1. Add User Message immediately
+        # 1. Add User Message (Visual only)
         self.add_message_bubble(msg, True, ts)
         self.entry.delete(0, tk.END)
 
-        # --- NEW: CHECK FOR IMAGE COMMAND ---
+        # --- FEATURE 1: NLP SUMMARY & KEYWORDS ---
+        if msg == "/summary" or msg == "/keywords":
+            # Check if we have enough history
+            if len(self.chat_history_text) < 2:
+                self.add_system_message("Not enough chat history to analyze yet.")
+                return
+
+            mode = "summary" if msg == "/summary" else "keywords"
+            self.add_system_message(f"🧠 Generating {mode}...")
+
+            # Combine last 20 messages into one string
+            recent_history = "\n".join(self.chat_history_text[-20:])
+
+            def on_analysis_done(result):
+                # Display result in a distinct system bubble
+                self.window.after(0, lambda: self.add_message_bubble(
+                    f"📝 {mode.upper()}:\n{result}", 
+                    False, 
+                    datetime.now().strftime("%I:%M %p"), 
+                    "AI Analyst"
+                ))
+
+            # Trigger the bot analysis
+            if hasattr(self, 'bot_client'):
+                self.bot_client.analyze_text(recent_history, mode, on_analysis_done)
+            else:
+                # Lazy load if needed
+                try:
+                    from chat_bot_client import ChatBotClient
+                    if not hasattr(self, 'bot_client'): self.bot_client = ChatBotClient()
+                    self.bot_client.analyze_text(recent_history, mode, on_analysis_done)
+                except:
+                    self.add_system_message("Bot client not available.")
+            return
+
+        # --- FEATURE 2: IMAGE GENERATION ---
         if msg.startswith("/aipic:"):
-            # Extract prompt after the first ":" and strip whitespace
             try:
                 prompt = msg.split(":", 1)[1].strip()
                 if not prompt:
@@ -371,34 +412,40 @@ class ChatGUI:
                 self.add_system_message("Invalid format. Use /aipic: your prompt")
                 return
 
-            # Show a temporary system message
             self.add_system_message(f"🎨 Generating image: '{prompt}'...")
 
-            # Define callback for when generation finishes
             def on_image_ready(tk_image, error_msg):
                 timestamp = datetime.now().strftime("%I:%M %p")
                 if error_msg:
-                    # Show error if it failed
                     self.window.after(0, lambda: self.add_message_bubble(error_msg, False, timestamp, "System Error"))
                 else:
-                    # Show image if succeeded
                     self.window.after(0, lambda: self.add_image_bubble(tk_image, False, timestamp, "AI Artist"))
 
-            # Start generation
             if self.image_client:
                 self.image_client.generate(prompt, on_image_ready)
             else:
                  self.add_system_message("Image client not connected.")
             return
-        # ------------------------------------
 
-        # 2. Check for Bot Trigger (Your existing code)
+        # --- FEATURE 3: CHATBOT ---
         if msg.startswith("@bot"):
-            # ... (keep your existing bot logic here) ...
-            pass # (placeholder for your existing bot code block)
+            user_query = msg[4:].strip()
+            self.add_message_bubble("Thinking...", False, ts, "DeepSeek")
+            
+            def on_bot_reply(reply_text):
+                self.window.after(0, lambda: self.add_message_bubble(reply_text, False, datetime.now().strftime("%I:%M %p"), "DeepSeek"))
 
-        # 3. Game or Network Logic (Your existing code)
-        elif msg.startswith("GAME_"):
+            try:
+                from chat_bot_client import ChatBotClient
+                if not hasattr(self, 'bot_client'):
+                    self.bot_client = ChatBotClient()
+                self.bot_client.ask(user_query, on_bot_reply)
+            except Exception as e:
+                self.add_message_bubble(f"System Error: {e}", False, ts, "System")
+            return
+
+        # --- FEATURE 4: GAME & STANDARD CHAT ---
+        if msg.startswith("GAME_"):
             self.send_callback(msg)
         else:
             self.send_callback(msg)
