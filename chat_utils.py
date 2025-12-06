@@ -4,13 +4,13 @@ import json
 # Configurations
 CHUNK_SIZE = 1024
 CHAT_PORT = 1112
-SERVER = ("", CHAT_PORT) # Bind to all interfaces
+SERVER = ("", CHAT_PORT) 
 
-# Message Protocol
-# S_OFFLINE   = 0
-# S_CONNECTED = 1
-# S_LOGGEDIN  = 2
-# S_CHATTING  = 3
+# Message Protocol Constants
+S_OFFLINE   = 0
+S_CONNECTED = 1
+S_LOGGEDIN  = 2
+S_CHATTING  = 3
 
 def mysend(s, msg):
     """Sends a string message with a 5-byte length header."""
