@@ -1,5 +1,5 @@
 """
-chat_server.py - Complete Working Chat Server
+chat_server.py - Complete Working Chat Server with Timestamps
 Supports connections from anywhere (LAN or Internet)
 """
 
@@ -7,6 +7,7 @@ import socket
 import select
 import json
 import sys
+from datetime import datetime
 
 # Import your existing modules
 try:
@@ -31,6 +32,10 @@ class Server:
         self.logged_sock2name = {} 
         self.all_sockets = []
         self.group = grp.Group()
+        
+        # Track message seen status: {msg_id: {'sender': name, 'receiver': name, 'seen': False}}
+        self.message_status = {}
+        self.message_counter = 0
         
         # Use port from chat_utils or parameter
         self.port = port if port else CHAT_PORT
@@ -92,7 +97,6 @@ class Server:
         
         print(f"\nLocal clients use: 127.0.0.1:{self.port}")
         print(f"LAN clients use: <YOUR_LOCAL_IP>:{self.port}")
-        print(f"Internet clients use: <YOUR_PUBLIC_IP>:{self.port}")
         print("-" * 60)
         print("\nWaiting for connections...\n")
 
@@ -215,22 +219,58 @@ class Server:
                 peers = self.group.list_me(from_name)
                 message = msg.get('message', '')
                 
+                # Generate message ID and timestamp
+                self.message_counter += 1
+                msg_id = f"{from_name}_{self.message_counter}"
+                timestamp = datetime.now().strftime("%I:%M %p")  # "08:32 PM"
+                
                 # Log message (but not game moves)
                 if not message.startswith('GAME_'):
-                    print(f'[MSG] {from_name}: {message[:50]}...' if len(message) > 50 else f'[MSG] {from_name}: {message}')
+                    print(f'[MSG] {from_name} [{timestamp}]: {message[:50]}...' if len(message) > 50 else f'[MSG] {from_name} [{timestamp}]: {message}')
                 
                 for peer in peers:
                     if peer != from_name:
                         to_sock = self.logged_name2sock.get(peer)
                         if to_sock:
-                            # Forward the message exactly as is
+                            # Forward message with timestamp and message ID
                             mysend(to_sock, json.dumps({
                                 "action":"exchange", 
                                 "from": from_name, 
-                                "message": message
+                                "message": message,
+                                "timestamp": timestamp,
+                                "msg_id": msg_id,
+                                "status": "delivered"
                             }))
+                            
+                            # Track message for seen status
+                            self.message_status[msg_id] = {
+                                'sender': from_name,
+                                'receiver': peer,
+                                'seen': False
+                            }
 
-            # 3. Disconnect
+            # 3. Message Seen Notification
+            elif action == 'seen':
+                msg_id = msg.get('msg_id', '')
+                from_name = self.logged_sock2name.get(from_sock, '')
+                
+                if msg_id in self.message_status:
+                    self.message_status[msg_id]['seen'] = True
+                    
+                    # Notify sender that message was seen
+                    sender = self.message_status[msg_id]['sender']
+                    if sender in self.logged_name2sock:
+                        sender_sock = self.logged_name2sock[sender]
+                        try:
+                            mysend(sender_sock, json.dumps({
+                                "action": "seen_ack",
+                                "msg_id": msg_id,
+                                "seen_by": from_name
+                            }))
+                        except:
+                            pass
+
+            # 4. Disconnect
             elif action == 'disconnect':
                 from_name = self.logged_sock2name.get(from_sock, '')
                 if not from_name:
@@ -252,7 +292,7 @@ class Server:
                         except:
                             pass
 
-            # 4. List Users (Who)
+            # 5. List Users (Who)
             elif action == 'list':
                 from_name = self.logged_sock2name.get(from_sock, '')
                 if not from_name:

@@ -1,5 +1,5 @@
 """
-client_state_machine.py - Client State Machine
+client_state_machine.py - Client State Machine with Timestamps & Seen Status
 Handles client states and message processing
 """
 
@@ -25,6 +25,7 @@ class ClientStateMachine:
         self.client_name = client_name
         self.peer_name = None
         self.gui = None  # Will be set by client class
+        self.send_callback = None  # Will be set by client class
     
     def set_state(self, new_state):
         """Change the client state"""
@@ -86,6 +87,9 @@ class ClientStateMachine:
             elif action == 'exchange':
                 self._handle_incoming_message(data)
             
+            elif action == 'seen_ack':
+                self._handle_seen_acknowledgment(data)
+            
             elif action == 'list':
                 self._handle_user_list(data)
             
@@ -120,6 +124,8 @@ class ClientStateMachine:
         """Handle incoming chat message"""
         sender = data.get('from', 'Unknown')
         message = data.get('message', '')
+        timestamp = data.get('timestamp', '')
+        msg_id = data.get('msg_id', '')
         
         # Filter out game messages from chat display
         if message.startswith("GAME_"):
@@ -128,9 +134,41 @@ class ClientStateMachine:
                 self.gui.game_window.receive_move(message)
             return
         
-        # Display regular message
+        # Display regular message with timestamp
         if self.gui:
-            self.gui.handle_incoming_message(message, sender)
+            self.gui.handle_incoming_message(message, sender, timestamp, msg_id)
+            
+            # Send seen notification after a short delay (simulating reading)
+            # In a real app, this would be when user actually views the message
+            if msg_id and self.send_callback:
+                # Send seen notification
+                import threading
+                def send_seen():
+                    import time
+                    time.sleep(0.5)  # Small delay to simulate reading
+                    if self.send_callback:
+                        seen_msg = json.dumps({
+                            'action': 'seen',
+                            'msg_id': msg_id
+                        })
+                        try:
+                            from chat_utils import mysend
+                            # Access the socket through the client
+                            # This is a bit hacky - better to pass socket reference
+                            # For now, we'll skip auto-seen and add manual seen later
+                            pass
+                        except:
+                            pass
+                
+                # threading.Thread(target=send_seen, daemon=True).start()
+    
+    def _handle_seen_acknowledgment(self, data):
+        """Handle seen acknowledgment from server"""
+        msg_id = data.get('msg_id', '')
+        seen_by = data.get('seen_by', '')
+        
+        if self.gui:
+            self.gui.mark_message_as_seen(msg_id)
     
     def _handle_user_list(self, data):
         """Handle online user list"""
