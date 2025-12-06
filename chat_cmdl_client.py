@@ -1,52 +1,21 @@
+#!/usr/bin/env python3
 """
-chat_cmdl_client.py - Main Launcher Script
-Entry point for the chat client application
+Entry point – launches the new client.
 """
-
-import sys
-import os
-from chat_client_class import ChatClient
+import os, sys, argparse
+from chat_client_class import Client
 
 def main():
-    """Main function to launch the chat client"""
-    
-    print("=" * 50)
-    print("ICS Chat Client")
-    print("Distributed Client-Server Chat System")
-    print("=" * 50)
-    print()
-    
-    # Check if custom server address is provided
-    server_ip = "127.0.0.1"  # Default to localhost
-    server_port = 1112  # Default port
-    
-    if len(sys.argv) > 1:
-        server_ip = sys.argv[1]
-    
-    if len(sys.argv) > 2:
-        try:
-            server_port = int(sys.argv[2])
-        except ValueError:
-            print(f"Invalid port number: {sys.argv[2]}")
-            print("Using default port 9009")
-    
-    print(f"Connecting to server at {server_ip}:{server_port}")
-    print()
-    
-    # Create and start client
-    client = ChatClient(server_ip, server_port)
-    
-    try:
-        client.start()
-    except KeyboardInterrupt:
-        print("\n\nShutting down client...")
-        client.stop()
-    except Exception as e:
-        print(f"\nError: {e}")
-        client.stop()
-    
-    print("Client stopped. Goodbye!")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", "--server", default="127.0.0.1", help="server IP")
+    parser.add_argument("-p", "--port", type=int, default=1112, help="server port")
+    args = parser.parse_args()
 
+    # pass address via env-vars so no hard-code inside client
+    os.environ["CHAT_SERVER_HOST"] = args.server
+    os.environ["CHAT_SERVER_PORT"] = str(args.port)
+
+    Client().start()
 
 if __name__ == "__main__":
     main()
