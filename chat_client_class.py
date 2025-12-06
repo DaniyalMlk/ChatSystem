@@ -87,6 +87,7 @@ class ChatClient:
     
     def receive_messages(self):
         """Receive messages from server (runs in separate thread)"""
+        print("[DEBUG] Receive thread started")
         while self.running:
             try:
                 msg = myrecv(self.socket)
@@ -95,8 +96,13 @@ class ChatClient:
                     print("[!] Server closed connection")
                     self.running = False
                     if self.gui:
-                        self.gui.display_system_message("Server disconnected")
+                        try:
+                            self.gui.display_system_message("Server disconnected")
+                        except:
+                            pass
                     break
+                
+                print(f"[DEBUG] Received: {msg[:100]}")
                 
                 # Process message through state machine
                 self.state_machine.process_message(msg)
@@ -104,6 +110,8 @@ class ChatClient:
             except Exception as e:
                 if self.running:
                     print(f"[✗] Error receiving message: {e}")
+                    import traceback
+                    traceback.print_exc()
                     self.running = False
                 break
         
