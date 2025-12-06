@@ -1,10 +1,10 @@
 """
-chat_gui.py - Complete Tkinter GUI with Timestamps & Seen Status
-Includes login window, main chat window, with Instagram-like features
+chat_gui.py - iMessage-Style Beautiful GUI
+Modern, clean interface with chat bubbles and dark theme
 """
 
 import tkinter as tk
-from tkinter import scrolledtext, messagebox, simpledialog
+from tkinter import messagebox, simpledialog, font as tkfont
 import json
 from datetime import datetime
 from game_client import TicTacGame
@@ -14,19 +14,14 @@ class LoginWindow:
     """Login window for entering nickname"""
     
     def __init__(self, callback):
-        """
-        Initialize login window
-        
-        Args:
-            callback: Function to call with nickname when login is clicked
-        """
         self.callback = callback
         self.nickname = None
         
         # Create window
         self.window = tk.Tk()
         self.window.title("Chat Login")
-        self.window.geometry("400x200")
+        self.window.geometry("450x250")
+        self.window.configure(bg='#1c1c1e')
         
         # Center window
         self.center_window()
@@ -34,37 +29,62 @@ class LoginWindow:
         # Title
         title = tk.Label(
             self.window,
-            text="Welcome to ICS Chat",
-            font=("Arial", 18, "bold"),
+            text="ICS Chat",
+            font=("SF Pro Display", 28, "bold"),
+            bg='#1c1c1e',
+            fg='white',
             pady=20
         )
         title.pack()
         
+        # Subtitle
+        subtitle = tk.Label(
+            self.window,
+            text="Enter your nickname to get started",
+            font=("SF Pro Text", 12),
+            bg='#1c1c1e',
+            fg='#8e8e93'
+        )
+        subtitle.pack()
+        
         # Nickname frame
-        frame = tk.Frame(self.window)
+        frame = tk.Frame(self.window, bg='#1c1c1e')
         frame.pack(pady=20)
         
-        tk.Label(frame, text="Nickname:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
-        
-        self.nickname_entry = tk.Entry(frame, font=("Arial", 12), width=20)
-        self.nickname_entry.pack(side=tk.LEFT, padx=5)
+        self.nickname_entry = tk.Entry(
+            frame,
+            font=("SF Pro Text", 14),
+            width=25,
+            bg='#2c2c2e',
+            fg='white',
+            insertbackground='white',
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground='#3a3a3c',
+            highlightcolor='#0a84ff'
+        )
+        self.nickname_entry.pack(ipady=8, padx=5)
         self.nickname_entry.focus()
-        
-        # Bind Enter key
         self.nickname_entry.bind('<Return>', lambda e: self.on_login())
         
         # Login button
         login_btn = tk.Button(
             self.window,
-            text="Login",
-            font=("Arial", 12),
+            text="Continue",
+            font=("SF Pro Text", 13, "bold"),
             command=self.on_login,
-            width=15
+            bg='#0a84ff',
+            fg='white',
+            activebackground='#0070e0',
+            activeforeground='white',
+            relief=tk.FLAT,
+            padx=40,
+            pady=10,
+            cursor='hand2'
         )
-        login_btn.pack(pady=10)
+        login_btn.pack(pady=15)
         
     def center_window(self):
-        """Center window on screen"""
         self.window.update_idletasks()
         width = self.window.winfo_width()
         height = self.window.winfo_height()
@@ -73,7 +93,6 @@ class LoginWindow:
         self.window.geometry(f'{width}x{height}+{x}+{y}')
     
     def on_login(self):
-        """Handle login button click"""
         nickname = self.nickname_entry.get().strip()
         
         if not nickname:
@@ -89,29 +108,19 @@ class LoginWindow:
         self.callback(nickname)
     
     def run(self):
-        """Start the login window"""
         self.window.mainloop()
         return self.nickname
 
 
 class ChatGUI:
-    """Main chat window GUI with timestamps and seen status"""
+    """iMessage-style chat GUI"""
     
     def __init__(self, send_callback, client_name):
-        """
-        Initialize chat GUI
-        
-        Args:
-            send_callback: Function to send messages
-            client_name: The user's nickname
-        """
         self.send_callback = send_callback
         self.client_name = client_name
         self.peer_name = None
         self.game_window = None
-        
-        # Track messages and their seen status
-        self.messages = {}  # {msg_id: {'text': '', 'timestamp': '', 'seen': False}}
+        self.messages = {}
         
         # Initialize feature manager
         try:
@@ -121,7 +130,6 @@ class ChatGUI:
             from feature_utils import DummyChatBotClient
             bot_client = DummyChatBotClient()
         except Exception as e:
-            print(f"[WARN] Chatbot initialization error: {e}")
             from feature_utils import DummyChatBotClient
             bot_client = DummyChatBotClient()
         
@@ -129,190 +137,272 @@ class ChatGUI:
         
         # Create main window
         self.window = tk.Tk()
-        self.window.title(f"ICS Chat - {client_name}")
-        self.window.geometry("700x600")
+        self.window.title(f"Messages - {client_name}")
+        self.window.geometry("900x700")
+        self.window.configure(bg='#000000')
+        
+        # Set minimum size
+        self.window.minsize(600, 500)
+        
         self.window.protocol("WM_DELETE_WINDOW", self.on_quit)
         
-        # Create GUI elements
         self.create_widgets()
         
     def create_widgets(self):
-        """Create all GUI widgets"""
+        """Create iMessage-style widgets"""
         
-        # Top frame with status
-        top_frame = tk.Frame(self.window, bg='lightblue', height=40)
-        top_frame.pack(fill=tk.X, side=tk.TOP)
+        # Top bar
+        top_bar = tk.Frame(self.window, bg='#1c1c1e', height=60)
+        top_bar.pack(fill=tk.X, side=tk.TOP)
+        top_bar.pack_propagate(False)
         
+        # Contact name
+        self.contact_label = tk.Label(
+            top_bar,
+            text="Not Connected",
+            font=("SF Pro Display", 16, "bold"),
+            bg='#1c1c1e',
+            fg='white'
+        )
+        self.contact_label.pack(pady=15)
+        
+        # Status label (smaller, underneath)
         self.status_label = tk.Label(
-            top_frame,
-            text=f"Logged in as: {self.client_name} | Status: Not Connected",
-            font=("Arial", 10),
-            bg='lightblue',
-            anchor='w'
+            top_bar,
+            text=f"Logged in as {self.client_name}",
+            font=("SF Pro Text", 11),
+            bg='#1c1c1e',
+            fg='#8e8e93'
         )
-        self.status_label.pack(fill=tk.X, padx=10, pady=10)
+        self.status_label.pack()
         
-        # Chat history area
-        history_frame = tk.Frame(self.window)
-        history_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # Chat area with canvas for bubbles
+        chat_container = tk.Frame(self.window, bg='#000000')
+        chat_container.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         
-        tk.Label(
-            history_frame,
-            text="Chat History",
-            font=("Arial", 11, "bold")
-        ).pack(anchor='w')
-        
-        self.chat_history = scrolledtext.ScrolledText(
-            history_frame,
-            wrap=tk.WORD,
-            font=("Arial", 10),
-            state=tk.DISABLED,
-            height=20
+        # Canvas and scrollbar for messages
+        self.canvas = tk.Canvas(
+            chat_container,
+            bg='#000000',
+            highlightthickness=0
         )
-        self.chat_history.pack(fill=tk.BOTH, expand=True)
         
-        # Configure text tags for colors and styles
-        self.chat_history.tag_config('green', foreground='green')
-        self.chat_history.tag_config('red', foreground='red')
-        self.chat_history.tag_config('blue', foreground='blue')
-        self.chat_history.tag_config('gray', foreground='gray')
-        self.chat_history.tag_config('lightgray', foreground='#999999')
-        self.chat_history.tag_config('timestamp', foreground='#666666', font=("Arial", 8))
-        self.chat_history.tag_config('checkmark', foreground='#999999', font=("Arial", 9))
-        self.chat_history.tag_config('checkmark_seen', foreground='#4A90E2', font=("Arial", 9))
-        self.chat_history.tag_config('bold', font=("Arial", 10, "bold"))
+        scrollbar = tk.Scrollbar(
+            chat_container,
+            orient=tk.VERTICAL,
+            command=self.canvas.yview,
+            bg='#1c1c1e',
+            troughcolor='#000000',
+            width=12
+        )
         
-        # Input frame
-        input_frame = tk.Frame(self.window)
-        input_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.scrollable_frame = tk.Frame(self.canvas, bg='#000000')
         
-        tk.Label(
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw", width=900)
+        
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Input area
+        input_container = tk.Frame(self.window, bg='#1c1c1e')
+        input_container.pack(fill=tk.X, side=tk.BOTTOM, padx=15, pady=15)
+        
+        # Input frame with rounded appearance
+        input_frame = tk.Frame(input_container, bg='#2c2c2e')
+        input_frame.pack(fill=tk.X, pady=5)
+        
+        # Emoji button
+        emoji_btn = tk.Button(
             input_frame,
-            text="Message:",
-            font=("Arial", 10)
-        ).pack(side=tk.LEFT, padx=5)
+            text="😀",
+            font=("SF Pro Text", 16),
+            bg='#2c2c2e',
+            fg='white',
+            relief=tk.FLAT,
+            padx=8,
+            command=self.show_emoji_picker,
+            cursor='hand2',
+            activebackground='#3a3a3c'
+        )
+        emoji_btn.pack(side=tk.LEFT, padx=5)
         
+        # Message entry
         self.message_entry = tk.Entry(
             input_frame,
-            font=("Arial", 10)
+            font=("SF Pro Text", 13),
+            bg='#2c2c2e',
+            fg='white',
+            insertbackground='white',
+            relief=tk.FLAT,
+            bd=0
         )
-        self.message_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.message_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=10, padx=5)
         self.message_entry.bind('<Return>', lambda e: self.on_send())
         
+        # Send button
         self.send_btn = tk.Button(
             input_frame,
-            text="Send",
-            font=("Arial", 10),
+            text="↑",
+            font=("SF Pro Text", 18, "bold"),
+            bg='#0a84ff',
+            fg='white',
+            relief=tk.FLAT,
+            width=3,
+            height=1,
             command=self.on_send,
-            width=10
+            cursor='hand2',
+            activebackground='#0070e0'
         )
-        self.send_btn.pack(side=tk.LEFT, padx=5)
+        self.send_btn.pack(side=tk.RIGHT, padx=5, pady=5)
         
-        # Button frame
-        button_frame = tk.Frame(self.window)
-        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        # Control buttons at bottom
+        control_frame = tk.Frame(self.window, bg='#1c1c1e')
+        control_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        btn_style = {
+            'font': ("SF Pro Text", 11),
+            'bg': '#2c2c2e',
+            'fg': 'white',
+            'relief': tk.FLAT,
+            'padx': 15,
+            'pady': 8,
+            'cursor': 'hand2',
+            'activebackground': '#3a3a3c'
+        }
         
         self.connect_btn = tk.Button(
-            button_frame,
-            text="Connect (Private)",
-            font=("Arial", 10),
+            control_frame,
+            text="Connect",
             command=self.on_connect,
-            width=15
+            **btn_style
         )
-        self.connect_btn.pack(side=tk.LEFT, padx=5)
+        self.connect_btn.pack(side=tk.LEFT, padx=5, pady=5)
         
         self.game_btn = tk.Button(
-            button_frame,
-            text="Start Game",
-            font=("Arial", 10),
+            control_frame,
+            text="Game",
             command=self.on_start_game,
-            width=15,
-            state=tk.DISABLED
+            state=tk.DISABLED,
+            **btn_style
         )
-        self.game_btn.pack(side=tk.LEFT, padx=5)
+        self.game_btn.pack(side=tk.LEFT, padx=5, pady=5)
         
         self.who_btn = tk.Button(
-            button_frame,
-            text="Who is Online",
-            font=("Arial", 10),
+            control_frame,
+            text="Online",
             command=self.on_who,
-            width=15
+            **btn_style
         )
-        self.who_btn.pack(side=tk.LEFT, padx=5)
+        self.who_btn.pack(side=tk.LEFT, padx=5, pady=5)
         
-        self.quit_btn = tk.Button(
-            button_frame,
-            text="Quit",
-            font=("Arial", 10),
-            command=self.on_quit,
-            width=15
-        )
-        self.quit_btn.pack(side=tk.LEFT, padx=5)
+    def add_message_bubble(self, message, is_mine=True, timestamp=None, sender_name=None):
+        """Add a message bubble to the chat"""
         
-    def display_message(self, message, sender=None, color=None, tag=None, timestamp=None, msg_id=None, show_check=False):
-        """
-        Display a message in the chat history with timestamp and checkmarks
+        # Container for message
+        msg_container = tk.Frame(self.scrollable_frame, bg='#000000')
+        msg_container.pack(fill=tk.X, padx=10, pady=3)
         
-        Args:
-            message: Message text
-            sender: Sender name (optional)
-            color: Text color (optional)
-            tag: Special tag like 'bold' (optional)
-            timestamp: Message timestamp (optional)
-            msg_id: Message ID for tracking seen status (optional)
-            show_check: Whether to show checkmarks (for sent messages)
-        """
-        self.chat_history.config(state=tk.NORMAL)
-        
-        # Add timestamp if provided
-        if timestamp:
-            self.chat_history.insert(tk.END, f"[{timestamp}] ", 'timestamp')
-        
-        if sender:
-            self.chat_history.insert(tk.END, f"{sender}: ", 'bold')
-        
-        # Analyze sentiment if it's a regular chat message
-        if color is None and sender and not message.startswith("Bot:"):
-            sentiment_color = self.feature_manager.get_sentiment_color(message)
-            color = sentiment_color
-        
-        # Insert message with color
-        if color:
-            self.chat_history.insert(tk.END, message, color)
-        elif tag:
-            self.chat_history.insert(tk.END, message, tag)
+        if is_mine:
+            # My messages - blue bubble on right
+            bubble_bg = '#0a84ff'
+            text_color = 'white'
+            anchor = 'e'
         else:
-            self.chat_history.insert(tk.END, message)
+            # Their messages - gray bubble on left
+            bubble_bg = '#2c2c2e'
+            text_color = 'white'
+            anchor = 'w'
         
-        # Add checkmarks for sent messages
-        if show_check and msg_id:
-            # Store message for tracking
-            self.messages[msg_id] = {
-                'text': message,
-                'timestamp': timestamp,
-                'seen': False,
-                'line_start': None  # Will store text widget line number
-            }
-            
-            # Add checkmark (will turn blue when seen)
-            self.chat_history.insert(tk.END, " ✓", 'checkmark')
+        # Message bubble
+        bubble_frame = tk.Frame(msg_container, bg='#000000')
+        bubble_frame.pack(anchor=anchor)
         
-        self.chat_history.insert(tk.END, "\n")
-        self.chat_history.see(tk.END)
-        self.chat_history.config(state=tk.DISABLED)
+        # Message text
+        msg_label = tk.Label(
+            bubble_frame,
+            text=message,
+            font=("SF Pro Text", 13),
+            bg=bubble_bg,
+            fg=text_color,
+            padx=15,
+            pady=10,
+            wraplength=400,
+            justify=tk.LEFT
+        )
+        msg_label.pack()
+        
+        # Timestamp
+        if timestamp:
+            time_label = tk.Label(
+                msg_container,
+                text=timestamp,
+                font=("SF Pro Text", 9),
+                bg='#000000',
+                fg='#8e8e93'
+            )
+            time_label.pack(anchor=anchor, padx=15, pady=1)
+        
+        # Scroll to bottom
+        self.canvas.update_idletasks()
+        self.canvas.yview_moveto(1.0)
     
-    def mark_message_as_seen(self, msg_id):
-        """Mark a message as seen and update checkmark color"""
-        if msg_id in self.messages:
-            self.messages[msg_id]['seen'] = True
-            # In a real implementation, we'd update the checkmark color in the text widget
-            # This is complex with tkinter Text widget, so we'll just note it's seen
-            print(f"[✓✓] Message {msg_id} seen")
+    def add_system_message(self, message, timestamp=None):
+        """Add a system message"""
+        msg_container = tk.Frame(self.scrollable_frame, bg='#000000')
+        msg_container.pack(fill=tk.X, pady=8)
+        
+        time_str = f"{timestamp} • " if timestamp else ""
+        
+        sys_label = tk.Label(
+            msg_container,
+            text=f"{time_str}{message}",
+            font=("SF Pro Text", 11),
+            bg='#000000',
+            fg='#8e8e93'
+        )
+        sys_label.pack()
+        
+        self.canvas.update_idletasks()
+        self.canvas.yview_moveto(1.0)
     
-    def display_system_message(self, message):
-        """Display a system message in gray"""
-        timestamp = datetime.now().strftime("%I:%M %p")
-        self.display_message(f"[SYSTEM] {message}", color='gray', timestamp=timestamp)
+    def show_emoji_picker(self):
+        """Show emoji picker popup"""
+        emojis = ['😀', '😂', '😍', '😢', '😎', '👍', '❤️', '🔥', '✨', '🎉', 
+                  '💯', '👋', '🙏', '💪', '🎮', '🎯', '⚡', '🌟', '💬', '✅']
+        
+        picker = tk.Toplevel(self.window)
+        picker.title("Emojis")
+        picker.configure(bg='#2c2c2e')
+        picker.geometry("300x200")
+        
+        frame = tk.Frame(picker, bg='#2c2c2e')
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        for i, emoji in enumerate(emojis):
+            btn = tk.Button(
+                frame,
+                text=emoji,
+                font=("SF Pro Text", 20),
+                bg='#2c2c2e',
+                fg='white',
+                relief=tk.FLAT,
+                cursor='hand2',
+                command=lambda e=emoji: self.insert_emoji(e, picker)
+            )
+            btn.grid(row=i//5, column=i%5, padx=5, pady=5)
+    
+    def insert_emoji(self, emoji, picker_window):
+        """Insert emoji into message entry"""
+        self.message_entry.insert(tk.END, emoji)
+        picker_window.destroy()
+        self.message_entry.focus()
     
     def on_send(self):
         """Handle send button click"""
@@ -321,36 +411,25 @@ class ChatGUI:
         if not message:
             return
         
+        timestamp = datetime.now().strftime("%I:%M %p")
+        
         # Check if message is for bot
         if self.feature_manager.process_message_for_bot(
             message,
-            lambda response: self.display_message(response, color='blue', timestamp=datetime.now().strftime("%I:%M %p"))
+            lambda response: self.add_message_bubble(response, is_mine=False, timestamp=timestamp, sender_name="Bot")
         ):
-            # Message was for bot, display it
-            timestamp = datetime.now().strftime("%I:%M %p")
-            self.display_message(message, sender="You", color='blue', timestamp=timestamp)
+            self.add_message_bubble(message, is_mine=True, timestamp=timestamp)
             self.message_entry.delete(0, tk.END)
             return
         
         # Check if it's a game message
         if message.startswith("GAME_"):
-            # Don't display game messages in chat
             self.send_callback(message)
             self.message_entry.delete(0, tk.END)
             return
         
-        # Regular message - display with timestamp and checkmark
-        timestamp = datetime.now().strftime("%I:%M %p")
-        msg_id = f"me_{timestamp}_{message[:10]}"  # Simple ID
-        
-        self.display_message(
-            message, 
-            sender="You", 
-            timestamp=timestamp,
-            msg_id=msg_id,
-            show_check=True
-        )
-        
+        # Regular message
+        self.add_message_bubble(message, is_mine=True, timestamp=timestamp)
         self.send_callback(message)
         self.message_entry.delete(0, tk.END)
     
@@ -366,7 +445,8 @@ class ChatGUI:
             peer = peer.strip()
             self.peer_name = peer
             self.send_callback(f"connect {peer}")
-            self.display_system_message(f"Connecting to {peer}...")
+            timestamp = datetime.now().strftime("%I:%M %p")
+            self.add_system_message(f"Connecting to {peer}...", timestamp)
             self.connect_btn.config(state=tk.DISABLED)
             self.game_btn.config(state=tk.NORMAL)
     
@@ -381,19 +461,15 @@ class ChatGUI:
             self.game_window.window.lift()
             return
         
-        # Create game window
-        self.game_window = TicTacGame(
-            self.window,
-            self.send_callback,
-            self.peer_name
-        )
-        
-        self.display_system_message("Game window opened!")
+        self.game_window = TicTacGame(self.window, self.send_callback, self.peer_name)
+        timestamp = datetime.now().strftime("%I:%M %p")
+        self.add_system_message("Game started", timestamp)
     
     def on_who(self):
         """Handle who is online button click"""
         self.send_callback("who")
-        self.display_system_message("Requesting online users...")
+        timestamp = datetime.now().strftime("%I:%M %p")
+        self.add_system_message("Checking who's online...", timestamp)
     
     def on_quit(self):
         """Handle quit button click"""
@@ -402,57 +478,57 @@ class ChatGUI:
             self.window.destroy()
     
     def handle_incoming_message(self, message, sender, timestamp=None, msg_id=None):
-        """
-        Handle incoming message from server
-        
-        Args:
-            message: Message content
-            sender: Sender's name
-            timestamp: Message timestamp
-            msg_id: Message ID for seen tracking
-        """
-        # Check if it's a game message
+        """Handle incoming message from server"""
         if message.startswith("GAME_"):
             if self.game_window:
                 self.game_window.receive_move(message)
             return
         
-        # Display regular message with timestamp
         if not timestamp:
             timestamp = datetime.now().strftime("%I:%M %p")
         
-        self.display_message(message, sender=sender, timestamp=timestamp)
+        self.add_message_bubble(message, is_mine=False, timestamp=timestamp, sender_name=sender)
     
     def handle_system_message(self, message):
         """Handle system messages from server"""
-        self.display_system_message(message)
+        timestamp = datetime.now().strftime("%I:%M %p")
+        self.add_system_message(message, timestamp)
         
-        # Update status based on message
-        if "connected to" in message.lower():
-            self.status_label.config(
-                text=f"Logged in as: {self.client_name} | Status: Connected to {self.peer_name}"
-            )
+        if "connected to" in message.lower() and self.peer_name:
+            self.contact_label.config(text=self.peer_name)
+            self.status_label.config(text="Active now")
         elif "disconnected" in message.lower():
-            self.status_label.config(
-                text=f"Logged in as: {self.client_name} | Status: Not Connected"
-            )
+            self.contact_label.config(text="Not Connected")
+            self.status_label.config(text=f"Logged in as {self.client_name}")
             self.connect_btn.config(state=tk.NORMAL)
             self.game_btn.config(state=tk.DISABLED)
             self.peer_name = None
     
     def handle_user_list(self, users):
         """Handle online user list"""
+        timestamp = datetime.now().strftime("%I:%M %p")
         if users:
             user_str = ", ".join(users)
-            self.display_system_message(f"Online users: {user_str}")
+            self.add_system_message(f"Online: {user_str}", timestamp)
         else:
-            self.display_system_message("No other users online")
+            self.add_system_message("No other users online", timestamp)
     
     def update_status(self, status):
         """Update status label"""
-        self.status_label.config(
-            text=f"Logged in as: {self.client_name} | Status: {status}"
-        )
+        self.status_label.config(text=status)
+    
+    def mark_message_as_seen(self, msg_id):
+        """Mark message as seen"""
+        pass  # Not needed for iMessage style
+    
+    def display_message(self, *args, **kwargs):
+        """Compatibility method - redirects to bubble"""
+        pass
+    
+    def display_system_message(self, message):
+        """Compatibility method"""
+        timestamp = datetime.now().strftime("%I:%M %p")
+        self.add_system_message(message, timestamp)
     
     def run(self):
         """Start the GUI main loop"""
