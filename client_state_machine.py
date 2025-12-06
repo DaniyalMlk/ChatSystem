@@ -1,145 +1,266 @@
+"""
+client_state_machine.py - Client State Machine
+Handles client states and message processing
+"""
+
 import json
-from chat_utils import *
 
-class ClientSM:
-    def __init__(self):
-        self.state = S_OFFLINE
-        self.peer = ''
-        self.me = ''
-        self.out_msg = ''
-        self.pnum = 0
+# State constants
+S_OFFLINE = 0
+S_LOGGEDIN = 1
+S_CHATTING = 2
 
-    def set_state(self, state):
-        self.state = state
-
-    def get_state(self):
-        return self.state
-
-    def set_myname(self, name):
-        self.me = name
-
-    def get_myname(self):
-        return self.me
-
-    def connect_to(self, peer):
-        msg = json.dumps({"action": "connect", "target": peer})
-        mysend(self.socket, msg)
-        response = json.loads(myrecv(self.socket))
-        if response["status"] == "success":
-            self.peer = peer
-            self.out_msg += f"Connected to {peer}\n"
-            return True
-        else:
-            self.out_msg += "Connection failed\n"
-            return False
-
-    def disconnect(self):
-        msg = json.dumps({"action": "disconnect"})
-        mysend(self.socket, msg)
-        self.out_msg += "Disconnected from " + self.peer + "\n"
-        self.peer = ''
-
-    def proc(self, my_msg, peer_msg):
+class ClientStateMachine:
+    """Manages client state and processes incoming messages"""
+    
+    def __init__(self, client_name):
         """
-        Core Logic Processor.
-        my_msg: Input from the GUI (what I typed).
-        peer_msg: Input from the Socket (what came from server).
-        """
-        self.out_msg = ''
+        Initialize state machine
         
-        # ---------------------------------------------------------
-        # STATE: CHATTING
-        # ---------------------------------------------------------
-        if self.state == S_CHATTING:
-            # 1. Handle Incoming Messages (peer_msg)
-            if len(peer_msg) > 0:
-                try:
-                    peer_msg = json.loads(peer_msg)
-                except:
-                    # If it's not JSON, it might be raw text or server error
-                    pass
-                
-                if isinstance(peer_msg, dict) and "action" in peer_msg:
-                    # Protocol handling (exchange, disconnect, etc)
-                    if peer_msg["action"] == "disconnect":
-                        self.state = S_LOGGEDIN
-                        self.peer = ''
-                        self.out_msg += "Peer disconnected.\n"
-                    elif peer_msg["action"] == "exchange":
-                        # This is a standard chat message
-                        from_user = peer_msg["from"]
-                        text = peer_msg["message"]
-                        
-                        # --- GAME LOGIC INTERCEPTION ---
-                        if text.startswith("GAME_MOVE:"):
-                            # Do NOT add to out_msg. The GUI class will 
-                            # read a special flag or we handle it here.
-                            # We will return a special tuple to the GUI
-                            return ("GAME", text) 
-                        # -------------------------------
-                        
-                        self.out_msg += f"[{from_user}] {text}\n"
-                
-            # 2. Handle Outgoing Messages (my_msg)
-            if len(my_msg) > 0:
-                # --- GAME LOGIC OUTGOING ---
-                if my_msg.startswith("GAME_MOVE:"):
-                    mysend(self.socket, json.dumps({"action": "exchange", "from": self.me, "message": my_msg}))
-                    return ("GAME", "SENT") # Don't print move to chat
-                # ---------------------------
-
-                if my_msg == 'disconnect':
-                    self.disconnect()
-                    self.state = S_LOGGEDIN
-                else:
-                    mysend(self.socket, json.dumps({"action": "exchange", "from": self.me, "message": my_msg}))
-                    # Usually we don't print our own msg here, the GUI adds it directly
+        Args:
+            client_name: The client's nickname
+        """
+        self.state = S_OFFLINE
+        self.client_name = client_name
+        self.peer_name = None
+        self.gui = None  # Will be set by client class
+    
+    def set_state(self, new_state):
+        """Change the client state"""
+        old_state = self.state
+        self.state = new_state
+        print(f"State changed: {self._state_name(old_state)} -> {self._state_name(new_state)}")
+    
+    def _state_name(self, state):
+        """Get human-readable state name"""
+        if state == S_OFFLINE:
+            return "OFFLINE"
+        elif state == S_LOGGEDIN:
+            return "LOGGED IN"
+        elif state == S_CHATTING:
+            return "CHATTING"
+        return "UNKNOWN"
+    
+    def process_message(self, msg):
+        """
+        Process incoming message from server
+        
+        Args:
+            msg: JSON message from server
+        """
+        try:
+            if not msg:
+                return
             
-            return self.out_msg
-
-        # ---------------------------------------------------------
-        # STATE: LOGGED IN (Waiting to connect)
-        # ---------------------------------------------------------
-        elif self.state == S_LOGGEDIN:
-            if len(my_msg) > 0:
-                if my_msg == 'q':
-                    self.out_msg += 'See you next time!\n'
-                    self.state = S_OFFLINE
-                elif my_msg == 'time':
-                    mysend(self.socket, json.dumps({"action": "time"}))
-                    svr_msg = json.loads(myrecv(self.socket))
-                    self.out_msg += "Time is: " + svr_msg["results"]
-                elif my_msg == 'who':
-                    mysend(self.socket, json.dumps({"action": "list"}))
-                    svr_msg = json.loads(myrecv(self.socket))
-                    self.out_msg += "Listing all: " + svr_msg["results"]
-                elif my_msg.startswith('c '):
-                    peer = my_msg[2:]
-                    peer = peer.strip()
-                    if self.connect_to(peer):
-                        self.state = S_CHATTING
-                        self.out_msg += 'Connect to ' + peer + '. Chat away!\n\n'
-                        self.out_msg += '-----------------------------------\n'
-                    else:
-                        self.out_msg += 'Connection failed\n'
-                elif my_msg.startswith('?'):
-                    term = my_msg[1:].strip()
-                    mysend(self.socket, json.dumps({"action":"search", "target":term}))
-                    svr_msg = json.loads(myrecv(self.socket))
-                    self.out_msg += "Search result:\n" + svr_msg["results"] + "\n"
-
-            if len(peer_msg) > 0:
-                try:
-                    peer_msg = json.loads(peer_msg)
-                except: pass
+            # Parse JSON
+            data = json.loads(msg)
+            
+            # Extract message action (server uses 'action' not 'type')
+            action = data.get('action', '')
+            
+            if action == 'login':
+                status = data.get('status', '')
+                if status == 'ok':
+                    self._handle_login_success()
+                elif status == 'duplicate':
+                    self._handle_error({'message': 'Nickname already in use'})
+            
+            elif action == 'connect':
+                status = data.get('status', '')
+                if status == 'success':
+                    # We initiated connection
+                    self._handle_connect_success(data)
+                elif status == 'request':
+                    # Someone is connecting to us
+                    from_user = data.get('from', 'Unknown')
+                    self.peer_name = from_user
+                    self.set_state(S_CHATTING)
+                    if self.gui:
+                        self.gui.peer_name = from_user
+                        self.gui.handle_system_message(f"{from_user} connected to you")
+                        self.gui.update_status(f"Chatting with {from_user}")
+                elif status == 'no-user':
+                    self._handle_error({'message': 'User not found'})
+            
+            elif action == 'exchange':
+                self._handle_incoming_message(data)
+            
+            elif action == 'list':
+                self._handle_user_list(data)
+            
+            elif action == 'disconnect':
+                self._handle_disconnect(data)
+            
+            else:
+                print(f"Unknown message action: {action}")
                 
-                if isinstance(peer_msg, dict) and peer_msg["action"] == "connect":
-                     self.peer = peer_msg["from"]
-                     self.out_msg += "Request from " + self.peer + "\n"
-                     self.out_msg += "You are connected with " + self.peer + ". Chat away!\n"
-                     self.out_msg += "-----------------------------------\n"
-                     self.state = S_CHATTING
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {e}")
+            print(f"Raw message: {msg}")
+        except Exception as e:
+            print(f"Error processing message: {e}")
+    
+    def _handle_login_success(self):
+        """Handle successful login"""
+        self.set_state(S_LOGGEDIN)
+        if self.gui:
+            self.gui.display_system_message("Successfully logged in!")
+            self.gui.update_status("Logged In")
+    
+    def _handle_error(self, data):
+        """Handle error message"""
+        error_msg = data.get('message', 'Unknown error')
+        print(f"Error from server: {error_msg}")
+        
+        if self.gui:
+            self.gui.display_system_message(f"Error: {error_msg}")
+    
+    def _handle_incoming_message(self, data):
+        """Handle incoming chat message"""
+        sender = data.get('from', 'Unknown')
+        message = data.get('message', '')
+        
+        # Filter out game messages from chat display
+        if message.startswith("GAME_"):
+            # Route to game window
+            if self.gui and self.gui.game_window:
+                self.gui.game_window.receive_move(message)
+            return
+        
+        # Display regular message
+        if self.gui:
+            self.gui.handle_incoming_message(message, sender)
+    
+    def _handle_user_list(self, data):
+        """Handle online user list"""
+        users = data.get('results', [])
+        
+        if self.gui:
+            self.gui.handle_user_list(users)
+    
+    def _handle_connect_success(self, data):
+        """Handle successful connection to peer"""
+        # When we initiate connection, server sends back success
+        # The actual peer connection happens when both sides are ready
+        self.set_state(S_CHATTING)
+        
+        if self.gui:
+            # Use the peer_name we stored when sending connect
+            if self.peer_name:
+                self.gui.handle_system_message(f"Connected to {self.peer_name}")
+                self.gui.update_status(f"Chatting with {self.peer_name}")
+            else:
+                self.gui.handle_system_message(f"Connection established")
+                self.gui.update_status(f"Chatting")
+    
+    def _handle_disconnect(self, data):
+        """Handle disconnection from peer"""
+        peer = data.get('peer', self.peer_name)
+        reason = data.get('reason', 'Disconnected')
+        
+        self.peer_name = None
+        self.set_state(S_LOGGEDIN)
+        
+        if self.gui:
+            self.gui.peer_name = None
+            self.gui.handle_system_message(f"{peer} {reason}")
+            self.gui.update_status("Logged In")
+    
+    def _handle_system_message(self, data):
+        """Handle system message"""
+        message = data.get('message', '')
+        
+        if self.gui:
+            self.gui.handle_system_message(message)
+    
+    def format_outgoing_message(self, message):
+        """
+        Format outgoing message as JSON
+        
+        Args:
+            message: Message text
+            
+        Returns:
+            JSON string
+        """
+        # Handle special commands
+        if message.startswith('connect '):
+            peer = message.split(' ', 1)[1].strip()
+            self.peer_name = peer  # Store the peer we're connecting to
+            return json.dumps({
+                'action': 'connect',
+                'target': peer
+            })
+        
+        elif message == 'who':
+            return json.dumps({
+                'action': 'list'
+            })
+        
+        elif message == 'q':
+            return json.dumps({
+                'action': 'disconnect'
+            })
+        
+        elif message.startswith('disconnect'):
+            return json.dumps({
+                'action': 'disconnect'
+            })
+        
+        # Game messages and regular chat messages
+        else:
+            return json.dumps({
+                'action': 'exchange',
+                'message': message
+            })
 
-            return self.out_msg
 
+class SimpleClientSM:
+    """
+    Simplified state machine for backward compatibility
+    Delegates to ClientStateMachine
+    """
+    
+    def __init__(self, s):
+        """
+        Initialize with socket
+        
+        Args:
+            s: Socket object
+        """
+        self.s = s
+        self.state = S_OFFLINE
+        self.peer = None
+        self.me = None
+        self.out_msg = ''
+        self.state_machine = None  # Will be set by client
+    
+    def set_state(self, state):
+        """Set the current state"""
+        self.state = state
+        if self.state_machine:
+            self.state_machine.set_state(state)
+    
+    def get_state(self):
+        """Get the current state"""
+        return self.state
+    
+    def set_myname(self, name):
+        """Set client name"""
+        self.me = name
+    
+    def get_myname(self):
+        """Get client name"""
+        return self.me
+    
+    def connect_to(self, peer_name):
+        """Connect to a peer"""
+        self.peer = peer_name
+        msg = json.dumps({'type': 'connect', 'peer': peer_name})
+        return msg
+    
+    def proc(self, msg):
+        """Process incoming message"""
+        if self.state_machine:
+            self.state_machine.process_message(msg)
         return self.out_msg

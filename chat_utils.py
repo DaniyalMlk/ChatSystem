@@ -1,50 +1,72 @@
-import socket
+"""
+chat_utils.py - Utility functions for chat system
+Contains mysend, myrecv, and configuration constants
+"""
+
 import json
 
-# Configurations
-CHUNK_SIZE = 1024
+# Configuration
+CLIENT_IP = '127.0.0.1'
+SERVER_IP = '127.0.0.1'
+SERVER_PORT = 1112  # Match your server's port
 CHAT_PORT = 1112
-SERVER = ("", CHAT_PORT) 
 
-# Message Protocol Constants
-S_OFFLINE   = 0
-S_CONNECTED = 1
-S_LOGGEDIN  = 2
-S_CHATTING  = 3
+# Server address tuple
+SERVER = (SERVER_IP, SERVER_PORT)
+
+# Message length prefix size
+SIZE_SPEC = 'I'  # Unsigned int (4 bytes)
 
 def mysend(s, msg):
-    """Sends a string message with a 5-byte length header."""
-    try:
-        if isinstance(msg, str):
-            msg = msg.encode()
-        
-        # Prefix with length (5 chars, zero-padded)
-        size_header = f"{len(msg):05d}".encode()
-        s.sendall(size_header + msg)
-    except Exception as e:
-        print(f"Send Error: {e}")
+    """
+    Send a message with length prefix
+    
+    Args:
+        s: Socket object
+        msg: Message string to send
+    """
+    import struct
+    
+    # Encode message to bytes
+    msg_bytes = msg.encode('utf-8')
+    
+    # Create length prefix (4 bytes, unsigned int)
+    length = len(msg_bytes)
+    length_prefix = struct.pack(SIZE_SPEC, length)
+    
+    # Send length + message
+    s.sendall(length_prefix + msg_bytes)
 
 def myrecv(s):
-    """Receives a message by reading length header first."""
-    try:
-        # Read 5-byte size header
-        size_header = s.recv(5)
-        if not size_header or len(size_header) < 5:
-            return ""
+    """
+    Receive a message with length prefix
+    
+    Args:
+        s: Socket object
         
-        try:
-            msg_len = int(size_header.decode())
-        except ValueError:
-            return "" # Invalid header
-            
-        # Read the rest of the message
-        data = b""
-        while len(data) < msg_len:
-            chunk = s.recv(min(msg_len - len(data), CHUNK_SIZE))
-            if not chunk: break
-            data += chunk
-            
-        return data.decode()
-    except Exception as e:
-        print(f"Recv Error: {e}")
-        return ""
+    Returns:
+        Decoded message string
+    """
+    import struct
+    
+    # First receive the length prefix (4 bytes)
+    length_bytes = b''
+    while len(length_bytes) < 4:
+        chunk = s.recv(4 - len(length_bytes))
+        if not chunk:
+            return None
+        length_bytes += chunk
+    
+    # Unpack the length
+    length = struct.unpack(SIZE_SPEC, length_bytes)[0]
+    
+    # Now receive the actual message
+    msg_bytes = b''
+    while len(msg_bytes) < length:
+        chunk = s.recv(length - len(msg_bytes))
+        if not chunk:
+            return None
+        msg_bytes += chunk
+    
+    # Decode and return
+    return msg_bytes.decode('utf-8')

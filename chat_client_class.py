@@ -1,82 +1,195 @@
+"""
+chat_client_class.py - Chat Client Class
+Manages socket connection and integrates GUI with state machine
+"""
+
 import socket
 import threading
-import json
-from chat_utils import *
-from client_state_machine import ClientSM
-from chat_gui import GUI
+import sys
+from chat_utils import mysend, myrecv, CLIENT_IP, SERVER_IP, SERVER_PORT
+from client_state_machine import ClientStateMachine, S_OFFLINE, S_LOGGEDIN
+from chat_gui import ChatGUI, LoginWindow
 
-class Client:
-    def __init__(self, args):
-        self.peer = ''
-        self.console_input = []
-        self.state = S_OFFLINE
-        self.system_args = args
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sm = ClientSM()
+class ChatClient:
+    """Main chat client class"""
+    
+    def __init__(self, server_ip=SERVER_IP, server_port=SERVER_PORT):
+        """
+        Initialize chat client
         
-        # Initialize GUI passing self as reference
-        self.gui = GUI(args, self)
-        
-        self.running = True
-
-    def login(self, name):
-        # Connect to server
+        Args:
+            server_ip: Server IP address
+            server_port: Server port
+        """
+        self.server_ip = server_ip
+        self.server_port = server_port
+        self.socket = None
+        self.state_machine = None
+        self.gui = None
+        self.client_name = None
+        self.running = False
+        self.receive_thread = None
+    
+    def connect_to_server(self):
+        """Establish connection to server"""
         try:
-            self.socket.connect(self.system_args)
-            mysend(self.socket, json.dumps({"action": "login", "name": name}))
-            response = json.loads(myrecv(self.socket))
-            
-            if response["status"] == "ok":
-                self.sm.set_state(S_LOGGEDIN)
-                self.sm.set_myname(name)
-                self.sm.socket = self.socket # Give SM access to socket
-                
-                # Start Receiving Thread
-                self.recv_thread = threading.Thread(target=self.recv_loop)
-                self.recv_thread.daemon = True
-                self.recv_thread.start()
-                return True
-            else:
-                return False
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.connect((self.server_ip, self.server_port))
+            print(f"Connected to server at {self.server_ip}:{self.server_port}")
+            return True
         except Exception as e:
-            print(f"Login Error: {e}")
+            print(f"Failed to connect to server: {e}")
             return False
-
-    def send_to_server(self, msg):
-        # Pass user input to State Machine to handle logic/sending
-        # We pass an empty string as 'peer_msg' because this is user input
-        self.sm.proc(msg, "")
-
-    def recv_loop(self):
+    
+    def login(self, nickname):
         """
-        Background thread that listens for socket messages
-        and updates the GUI.
+        Send login request to server
+        
+        Args:
+            nickname: User's nickname
         """
+        import json
+        
+        self.client_name = nickname
+        
+        # Initialize state machine
+        self.state_machine = ClientStateMachine(nickname)
+        
+        # Send login message (server expects 'action': 'login')
+        login_msg = json.dumps({
+            'action': 'login',
+            'name': nickname
+        })
+        
+        try:
+            mysend(self.socket, login_msg)
+            # Don't set state here - wait for server response
+            print(f"Login request sent for {nickname}")
+            return True
+        except Exception as e:
+            print(f"Login failed: {e}")
+            return False
+    
+    def send_message(self, message):
+        """
+        Send message to server
+        
+        Args:
+            message: Message text or command
+        """
+        try:
+            # Format message using state machine
+            formatted_msg = self.state_machine.format_outgoing_message(message)
+            mysend(self.socket, formatted_msg)
+        except Exception as e:
+            print(f"Error sending message: {e}")
+            if self.gui:
+                self.gui.display_system_message(f"Failed to send message: {e}")
+    
+    def receive_messages(self):
+        """Receive messages from server (runs in separate thread)"""
         while self.running:
             try:
                 msg = myrecv(self.socket)
-                if len(msg) > 0:
-                    # Pass incoming network msg to State Machine
-                    # We pass empty string as 'my_msg'
-                    output = self.sm.proc("", msg)
-                    
-                    # Update GUI
-                    if output:
-                        self.gui.process_incoming(output)
-                else:
-                    # Server closed connection
-                    break
-            except Exception as e:
-                print(f"Connection error: {e}")
-                break
                 
-    def quit(self):
-        self.running = False
-        self.socket.close()
-
+                if not msg:
+                    print("Server closed connection")
+                    self.running = False
+                    break
+                
+                # Process message through state machine
+                self.state_machine.process_message(msg)
+                
+            except Exception as e:
+                if self.running:
+                    print(f"Error receiving message: {e}")
+                    self.running = False
+                break
+        
+        # Clean up
+        try:
+            self.socket.close()
+        except:
+            pass
+        
+        print("Receive thread terminated")
+    
     def start(self):
-<<<<<<< HEAD
+        """Start the client"""
+        # Show login window
+        login_window = LoginWindow(self._on_login)
+        nickname = login_window.run()
+        
+        if not nickname:
+            print("Login cancelled")
+            return
+        
+        # Connect to server
+        if not self.connect_to_server():
+            print("Failed to connect to server")
+            return
+        
+        # Login
+        if not self.login(nickname):
+            print("Login failed")
+            return
+        
+        # Start receiving thread
+        self.running = True
+        self.receive_thread = threading.Thread(target=self.receive_messages)
+        self.receive_thread.daemon = True
+        self.receive_thread.start()
+        
+        # Create and start GUI
+        self.gui = ChatGUI(self.send_message, nickname)
+        self.state_machine.gui = self.gui
+        
+        # Run GUI (blocks until window is closed)
         self.gui.run()
-=======
-        self.gui.run()
->>>>>>> 30b74ad713e94c1b6700511de2bdc39b0e40b13a
+        
+        # Cleanup
+        self.running = False
+        if self.receive_thread:
+            self.receive_thread.join(timeout=2)
+    
+    def _on_login(self, nickname):
+        """Callback for login window"""
+        # This is called by the login window
+        # The actual connection happens in start()
+        pass
+    
+    def stop(self):
+        """Stop the client"""
+        self.running = False
+        try:
+            if self.socket:
+                self.socket.close()
+        except:
+            pass
+
+
+# Backward compatible Client class
+class Client:
+    """Simplified client class for compatibility"""
+    
+    def __init__(self, server_ip=SERVER_IP, server_port=SERVER_PORT):
+        """Initialize client"""
+        self.chat_client = ChatClient(server_ip, server_port)
+    
+    def start(self):
+        """Start the client"""
+        self.chat_client.start()
+    
+    def quit(self):
+        """Quit the client"""
+        self.chat_client.stop()
+
+
+if __name__ == "__main__":
+    # For testing
+    client = ChatClient()
+    try:
+        client.start()
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+        client.stop()
