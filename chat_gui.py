@@ -314,7 +314,7 @@ class ChatGUI:
         if not msg: return
         ts = datetime.now().strftime("%I:%M %p")
         
-        # 1. Add User Message immediately
+        # 1. Add User Message
         self.add_message_bubble(msg, True, ts)
         self.entry.delete(0, tk.END)
 
@@ -322,28 +322,27 @@ class ChatGUI:
         if msg.startswith("@bot"):
             user_query = msg[4:].strip()
             
-            # Define what happens when the bot finishes thinking
+            # A. Show "Thinking..." message immediately
+            self.add_message_bubble("Thinking...", False, ts, "DeepSeek")
+            
+            # Define what happens when the bot finishes
             def on_bot_reply(reply_text):
                 # We use .after to ensure this runs on the main GUI thread safely
+                # Note: In a real app we would replace the "Thinking..." bubble, 
+                # but appending is safer for now.
                 self.window.after(0, lambda: self.add_message_bubble(reply_text, False, datetime.now().strftime("%I:%M %p"), "DeepSeek"))
 
-            # Ask the bot (this runs in background)
+            # Ask the bot (this runs in background thread)
             try:
-                # If you haven't imported it at the top, we do a lazy import here
                 from chat_bot_client import ChatBotClient
-                
-                # Create a persistent bot instance if it doesn't exist yet
                 if not hasattr(self, 'bot_client'):
                     self.bot_client = ChatBotClient()
-                
-                # Send the query
                 self.bot_client.ask(user_query, on_bot_reply)
-                
             except Exception as e:
                 self.add_message_bubble(f"System Error: {e}", False, ts, "System")
             return
 
-        # 3. Game or Network Logic (Keep your existing logic here)
+        # 3. Game or Network Logic
         if msg.startswith("GAME_"):
             self.send_callback(msg)
         else:
@@ -426,9 +425,18 @@ class ChatGUI:
         if s: messagebox.showinfo("Info", "Search logic would go here")
 
     def handle_incoming_message(self, message, sender, timestamp=None, msg_id=None):
-        if message.startswith("GAME_") and self.game_window:
-            self.game_window.receive_move(message)
+        # 1. If it's a game message, send it to the game window
+        if message.startswith("GAME_"):
+            if self.game_window:
+                self.game_window.receive_move(message)
+            elif "GAME_START" in message:
+                # Optional: Auto-start game if opponent starts
+                if messagebox.askyesno("Challenge", f"{sender} started Tetris. Join?"):
+                     self.peer_name = sender # Ensure we know who we are playing
+                     self.on_start_game()
             return
+            
+        # 2. Normal Chat Message
         if not timestamp: timestamp = datetime.now().strftime("%I:%M %p")
         self.add_message_bubble(message, False, timestamp, sender)
 
