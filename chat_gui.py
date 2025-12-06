@@ -139,7 +139,7 @@ class ChatGUI:
         self.window = tk.Tk()
         self.window.title(f"Messages - {client_name}")
         self.window.geometry("900x700")
-        self.window.configure(bg='#000000')
+        self.window.configure(bg='#1c1c1e')
         
         # Set minimum size
         self.window.minsize(600, 500)
@@ -183,7 +183,7 @@ class ChatGUI:
         # Canvas and scrollbar for messages
         self.canvas = tk.Canvas(
             chat_container,
-            bg='#000000',
+            bg='#1c1c1e',
             highlightthickness=0
         )
         
@@ -191,12 +191,12 @@ class ChatGUI:
             chat_container,
             orient=tk.VERTICAL,
             command=self.canvas.yview,
-            bg='#1c1c1e',
-            troughcolor='#000000',
+            bg='#2c2c2e',
+            troughcolor='#1c1c1e',
             width=12
         )
         
-        self.scrollable_frame = tk.Frame(self.canvas, bg='#000000')
+        self.scrollable_frame = tk.Frame(self.canvas, bg='#1c1c1e')
         
         self.scrollable_frame.bind(
             "<Configure>",
@@ -306,7 +306,7 @@ class ChatGUI:
         """Add a message bubble to the chat"""
         
         # Container for message
-        msg_container = tk.Frame(self.scrollable_frame, bg='#000000')
+        msg_container = tk.Frame(self.scrollable_frame, bg='#1c1c1e')
         msg_container.pack(fill=tk.X, padx=10, pady=3)
         
         if is_mine:
@@ -321,7 +321,7 @@ class ChatGUI:
             anchor = 'w'
         
         # Message bubble
-        bubble_frame = tk.Frame(msg_container, bg='#000000')
+        bubble_frame = tk.Frame(msg_container, bg='#1c1c1e')
         bubble_frame.pack(anchor=anchor)
         
         # Message text
@@ -344,7 +344,7 @@ class ChatGUI:
                 msg_container,
                 text=timestamp,
                 font=("SF Pro Text", 9),
-                bg='#000000',
+                bg='#1c1c1e',
                 fg='#8e8e93'
             )
             time_label.pack(anchor=anchor, padx=15, pady=1)
@@ -355,7 +355,7 @@ class ChatGUI:
     
     def add_system_message(self, message, timestamp=None):
         """Add a system message"""
-        msg_container = tk.Frame(self.scrollable_frame, bg='#000000')
+        msg_container = tk.Frame(self.scrollable_frame, bg='#1c1c1e')
         msg_container.pack(fill=tk.X, pady=8)
         
         time_str = f"{timestamp} • " if timestamp else ""
@@ -364,7 +364,7 @@ class ChatGUI:
             msg_container,
             text=f"{time_str}{message}",
             font=("SF Pro Text", 11),
-            bg='#000000',
+            bg='#1c1c1e',
             fg='#8e8e93'
         )
         sys_label.pack()
