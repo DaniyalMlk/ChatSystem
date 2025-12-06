@@ -77,10 +77,10 @@ class RoundedFrame(tk.Canvas):
 
 # --- MOCKS ---
 try:
-    from game_client import TicTacGame
+    from game_client import TetrisGame
     from feature_utils import FeatureManager
 except ImportError:
-    class TicTacGame: 
+    class TetrisGame: 
         def __init__(self, *args): pass
     class FeatureManager: 
         def __init__(self, *args): pass
@@ -314,15 +314,40 @@ class ChatGUI:
         if not msg: return
         ts = datetime.now().strftime("%I:%M %p")
         
+        # 1. Add User Message immediately
+        self.add_message_bubble(msg, True, ts)
+        self.entry.delete(0, tk.END)
+
+        # 2. Check for Bot Trigger
         if msg.startswith("@bot"):
-            self.add_message_bubble(msg, True, ts)
-            self.add_message_bubble(f"Bot: {msg[4:]}", False, ts, "Bot")
-        elif msg.startswith("GAME_"):
+            user_query = msg[4:].strip()
+            
+            # Define what happens when the bot finishes thinking
+            def on_bot_reply(reply_text):
+                # We use .after to ensure this runs on the main GUI thread safely
+                self.window.after(0, lambda: self.add_message_bubble(reply_text, False, datetime.now().strftime("%I:%M %p"), "DeepSeek"))
+
+            # Ask the bot (this runs in background)
+            try:
+                # If you haven't imported it at the top, we do a lazy import here
+                from chat_bot_client import ChatBotClient
+                
+                # Create a persistent bot instance if it doesn't exist yet
+                if not hasattr(self, 'bot_client'):
+                    self.bot_client = ChatBotClient()
+                
+                # Send the query
+                self.bot_client.ask(user_query, on_bot_reply)
+                
+            except Exception as e:
+                self.add_message_bubble(f"System Error: {e}", False, ts, "System")
+            return
+
+        # 3. Game or Network Logic (Keep your existing logic here)
+        if msg.startswith("GAME_"):
             self.send_callback(msg)
         else:
-            self.add_message_bubble(msg, True, ts)
             self.send_callback(msg)
-        self.entry.delete(0, tk.END)
 
     def show_emoji_picker(self):
         picker = tk.Toplevel(self.window)
@@ -377,9 +402,11 @@ class ChatGUI:
             self.game_window.window.lift()
             return
         try:
-            self.game_window = TicTacGame(self.window, self.send_callback, self.peer_name)
-            self.add_system_message("Game started")
-        except: pass
+            # Change TicTacGame to TetrisGame here
+            self.game_window = TetrisGame(self.window, self.send_callback, self.peer_name)
+            self.add_system_message("Tetris Game started")
+        except Exception as e:
+            print(e)
 
     def on_who(self):
         self.send_callback("who")

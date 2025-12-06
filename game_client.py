@@ -1,233 +1,156 @@
-"""
-game_client.py - Tic-Tac-Toe Game Client
-Implements a graphical Tic-Tac-Toe game that communicates through the chat socket
-(Will be replaced with Pac-Man in Phase 3)
-"""
-
 import tkinter as tk
-from tkinter import messagebox
+import random
 
-class TicTacGame:
-    """Tic-Tac-Toe game GUI that uses the existing chat socket"""
-    
+# Tetromino shapes
+SHAPES = [
+    [[1, 1, 1, 1]],                       # I
+    [[1, 1], [1, 1]],                     # O
+    [[0, 1, 0], [1, 1, 1]],               # T
+    [[1, 0, 0], [1, 1, 1]],               # L
+    [[0, 0, 1], [1, 1, 1]],               # J
+    [[0, 1, 1], [1, 1, 0]],               # S
+    [[1, 1, 0], [0, 1, 1]]                # Z
+]
+# Matching colors for shapes
+COLORS = ['#0A84FF', '#30D158', '#BF5AF2', '#FF9F0A', '#FF453A', '#64D2FF', '#FFD60A']
+
+class TetrisGame:
     def __init__(self, parent, send_callback, peer_name):
-        """
-        Initialize the game window
-        
-        Args:
-            parent: Parent tkinter window
-            send_callback: Function to send messages through chat socket
-            peer_name: Name of the opponent
-        """
-        self.parent = parent
         self.send_callback = send_callback
         self.peer_name = peer_name
         
-        # Game state
-        self.board = ['' for _ in range(9)]
-        self.current_player = 'X'
-        self.my_symbol = None
-        self.game_active = False
-        
-        # Create game window
+        # Create Game Window
         self.window = tk.Toplevel(parent)
-        self.window.title(f"Tic-Tac-Toe vs {peer_name}")
-        self.window.geometry("400x450")
-        self.window.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.window.title(f"Tetris vs {peer_name}")
+        self.window.geometry("400x600")
+        self.window.configure(bg='#1E1E1E')
         
-        # Status label
-        self.status_label = tk.Label(
-            self.window, 
-            text="Waiting to start...", 
-            font=("Arial", 14),
-            pady=10
-        )
-        self.status_label.pack()
+        # Game Config
+        self.rows = 20
+        self.cols = 10
+        self.cell_size = 30
+        self.score = 0
+        self.level = 1
+        self.speed = 500  # Start speed (ms)
+        self.game_over = False
+        self.board = [[0 for _ in range(self.cols)] for _ in range(self.rows)]
         
-        # Game board frame
-        self.board_frame = tk.Frame(self.window)
-        self.board_frame.pack(pady=20)
+        self._setup_ui()
         
-        # Create 3x3 grid of buttons
-        self.buttons = []
-        for i in range(9):
-            row = i // 3
-            col = i % 3
-            btn = tk.Button(
-                self.board_frame,
-                text='',
-                font=("Arial", 24, "bold"),
-                width=5,
-                height=2,
-                command=lambda idx=i: self.on_cell_click(idx)
+        # Controls
+        self.window.bind("<Left>", lambda e: self.move(-1, 0))
+        self.window.bind("<Right>", lambda e: self.move(1, 0))
+        self.window.bind("<Down>", lambda e: self.move(0, 1))
+        self.window.bind("<Up>", lambda e: self.rotate())
+        
+        # Start
+        self.spawn_piece()
+        self.run_game_loop()
+
+    def _setup_ui(self):
+        # Header
+        self.score_label = tk.Label(self.window, text="Score: 0  Level: 1", 
+                                  font=("Arial", 20, "bold"), bg='#1E1E1E', fg='white')
+        self.score_label.pack(pady=20)
+        
+        # Board Canvas
+        self.canvas = tk.Canvas(self.window, width=self.cols*self.cell_size, 
+                              height=self.rows*self.cell_size, bg='#252525', highlightthickness=0)
+        self.canvas.pack()
+
+    def spawn_piece(self):
+        self.current_shape = random.choice(SHAPES)
+        self.current_color = random.choice(COLORS)
+        # Center piece
+        self.piece_x = self.cols // 2 - len(self.current_shape[0]) // 2
+        self.piece_y = 0
+        
+        if self.check_collision(self.piece_x, self.piece_y, self.current_shape):
+            self.game_over = True
+            self.send_callback(f"GAME_OVER: I scored {self.score} in Tetris!")
+            self.canvas.create_text(
+                (self.cols*self.cell_size)/2, (self.rows*self.cell_size)/2,
+                text="GAME OVER", fill="white", font=("Arial", 30, "bold")
             )
-            btn.grid(row=row, column=col, padx=5, pady=5)
-            self.buttons.append(btn)
-        
-        # Control buttons
-        control_frame = tk.Frame(self.window)
-        control_frame.pack(pady=10)
-        
-        self.start_btn = tk.Button(
-            control_frame,
-            text="Start Game",
-            font=("Arial", 12),
-            command=self.start_game
-        )
-        self.start_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.reset_btn = tk.Button(
-            control_frame,
-            text="Reset",
-            font=("Arial", 12),
-            command=self.reset_game,
-            state=tk.DISABLED
-        )
-        self.reset_btn.pack(side=tk.LEFT, padx=5)
-        
-    def start_game(self):
-        """Send game start request to opponent"""
-        self.send_game_message("GAME_START")
-        self.my_symbol = 'X'
-        self.game_active = True
-        self.status_label.config(text="Your turn (X)")
-        self.start_btn.config(state=tk.DISABLED)
-        self.reset_btn.config(state=tk.NORMAL)
-        
-    def reset_game(self):
-        """Reset the game board"""
-        self.board = ['' for _ in range(9)]
-        self.current_player = 'X'
-        self.game_active = True
-        
-        for btn in self.buttons:
-            btn.config(text='', state=tk.NORMAL, bg='SystemButtonFace')
-        
-        if self.my_symbol == 'X':
-            self.status_label.config(text="Your turn (X)")
-        else:
-            self.status_label.config(text="Opponent's turn")
-            
-        self.send_game_message("GAME_RESET")
-    
-    def on_cell_click(self, idx):
-        """Handle cell click event"""
-        if not self.game_active:
-            messagebox.showwarning("Game Not Started", "Please start the game first!")
-            return
-            
-        if self.board[idx] != '':
-            messagebox.showwarning("Invalid Move", "Cell already occupied!")
-            return
-            
-        if self.current_player != self.my_symbol:
-            messagebox.showwarning("Not Your Turn", "Wait for opponent's move!")
-            return
-        
-        # Make move
-        self.make_move(idx, self.my_symbol)
-        
-        # Send move to opponent
-        self.send_game_message(f"GAME_MOVE:{idx}")
-        
-        # Check for win/draw
-        if self.check_winner():
-            self.end_game(f"You win!")
-        elif self.is_board_full():
-            self.end_game("Draw!")
-        else:
-            # Switch turn
-            self.current_player = 'O' if self.current_player == 'X' else 'X'
-            self.status_label.config(text="Opponent's turn")
-    
-    def make_move(self, idx, symbol):
-        """Update board with move"""
-        self.board[idx] = symbol
-        self.buttons[idx].config(text=symbol, state=tk.DISABLED)
-        
-        # Color code the symbols
-        if symbol == 'X':
-            self.buttons[idx].config(fg='blue')
-        else:
-            self.buttons[idx].config(fg='red')
-    
-    def receive_move(self, move_data):
-        """Process move received from opponent"""
-        if move_data == "GAME_START":
-            self.my_symbol = 'O'
-            self.game_active = True
-            self.status_label.config(text="Opponent's turn")
-            self.start_btn.config(state=tk.DISABLED)
-            self.reset_btn.config(state=tk.NORMAL)
-            return
-            
-        if move_data == "GAME_RESET":
-            self.reset_game()
-            return
-        
-        if not move_data.startswith("GAME_MOVE:"):
-            return
-            
-        try:
-            idx = int(move_data.split(":")[1])
-            opponent_symbol = 'O' if self.my_symbol == 'X' else 'X'
-            
-            # Make opponent's move
-            self.make_move(idx, opponent_symbol)
-            
-            # Check for win/draw
-            if self.check_winner():
-                self.end_game(f"Opponent wins!")
-            elif self.is_board_full():
-                self.end_game("Draw!")
-            else:
-                # Switch turn back to player
-                self.current_player = self.my_symbol
-                self.status_label.config(text=f"Your turn ({self.my_symbol})")
-                
-        except (ValueError, IndexError) as e:
-            print(f"[ERROR] Processing move: {e}")
-    
-    def check_winner(self):
-        """Check if there's a winner"""
-        # Win conditions: rows, columns, diagonals
-        win_conditions = [
-            [0, 1, 2], [3, 4, 5], [6, 7, 8],  # Rows
-            [0, 3, 6], [1, 4, 7], [2, 5, 8],  # Columns
-            [0, 4, 8], [2, 4, 6]              # Diagonals
-        ]
-        
-        for condition in win_conditions:
-            if (self.board[condition[0]] != '' and
-                self.board[condition[0]] == self.board[condition[1]] == self.board[condition[2]]):
-                # Highlight winning combination
-                for idx in condition:
-                    self.buttons[idx].config(bg='lightgreen')
-                return True
+
+    def check_collision(self, x, y, shape):
+        for r, row in enumerate(shape):
+            for c, cell in enumerate(row):
+                if cell:
+                    if (y + r >= self.rows or x + c < 0 or x + c >= self.cols or 
+                        self.board[y + r][x + c]):
+                        return True
         return False
-    
-    def is_board_full(self):
-        """Check if board is full (draw condition)"""
-        return all(cell != '' for cell in self.board)
-    
-    def end_game(self, message):
-        """End the game and show result"""
-        self.game_active = False
-        self.status_label.config(text=message)
+
+    def rotate(self):
+        # Matrix rotation logic
+        new_shape = [list(row) for row in zip(*self.current_shape[::-1])]
+        if not self.check_collision(self.piece_x, self.piece_y, new_shape):
+            self.current_shape = new_shape
+            self.draw()
+
+    def move(self, dx, dy):
+        if not self.game_over and not self.check_collision(self.piece_x + dx, self.piece_y + dy, self.current_shape):
+            self.piece_x += dx
+            self.piece_y += dy
+            self.draw()
+            return True
+        elif dy > 0: # Hit bottom
+            self.lock_piece()
+            return False
+        return False
+
+    def lock_piece(self):
+        for r, row in enumerate(self.current_shape):
+            for c, cell in enumerate(row):
+                if cell:
+                    self.board[self.piece_y + r][self.piece_x + c] = self.current_color
+        self.clear_lines()
+        self.spawn_piece()
+
+    def clear_lines(self):
+        new_board = [row for row in self.board if any(c == 0 for c in row)]
+        lines_cleared = self.rows - len(new_board)
         
-        # Disable all buttons
-        for btn in self.buttons:
-            btn.config(state=tk.DISABLED)
-    
-    def send_game_message(self, message):
-        """Send game message through chat socket"""
-        self.send_callback(message)
-    
-    def on_close(self):
-        """Handle window close"""
-        if self.game_active:
-            if messagebox.askokcancel("Quit Game", "Game in progress. Are you sure you want to quit?"):
-                self.send_game_message("GAME_QUIT")
-                self.window.destroy()
-        else:
-            self.window.destroy()
+        if lines_cleared > 0:
+            for _ in range(lines_cleared):
+                new_board.insert(0, [0 for _ in range(self.cols)])
+            self.board = new_board
+            
+            # Score Calculation
+            self.score += lines_cleared * 100 * self.level
+            self.level = 1 + self.score // 500
+            
+            # Speed up logic (lower ms = faster)
+            self.speed = max(100, 500 - (self.level * 30))
+            
+            self.score_label.config(text=f"Score: {self.score}  Level: {self.level}")
+
+    def draw(self):
+        self.canvas.delete("all")
+        # Draw board
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if self.board[r][c]:
+                    self.draw_cell(c, r, self.board[r][c])
+        # Draw current piece
+        for r, row in enumerate(self.current_shape):
+            for c, cell in enumerate(row):
+                if cell:
+                    self.draw_cell(self.piece_x + c, self.piece_y + r, self.current_color)
+
+    def draw_cell(self, x, y, color):
+        self.canvas.create_rectangle(
+            x*self.cell_size, y*self.cell_size, 
+            (x+1)*self.cell_size, (y+1)*self.cell_size, 
+            fill=color, outline=""
+        )
+
+    def run_game_loop(self):
+        if not self.game_over:
+            self.move(0, 1) # Auto drop
+            self.draw()
+            self.window.after(self.speed, self.run_game_loop)
+            
+    def receive_move(self, message):
+        pass
