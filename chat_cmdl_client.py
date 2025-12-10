@@ -5,7 +5,6 @@ Entry point for the chat client application - Works with any server
 
 import sys
 import os
-
 def main():
     """Main function to launch the chat client"""
     
@@ -16,8 +15,9 @@ def main():
     print()
     
     # Check if custom server address is provided
-    server_ip = "127.0.0.1"  # Default to localhost
-    server_port = 1112  # Default port
+    from chat_utils import SERVER_IP, SERVER_PORT
+    server_port = SERVER_PORT
+
     
     # Parse command line arguments
     if len(sys.argv) > 1:
