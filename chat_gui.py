@@ -95,11 +95,15 @@ class RoundedFrame(tk.Canvas):
 
 # --- MOCKS ---
 try:
-    from game_client import TetrisGame
+    from game_client_multiplayer import TetrisGame
 except ImportError:
-    class TetrisGame: 
-        def __init__(self, *args): 
-            messagebox.showwarning("Game", "game_client.py not found")
+    try:
+        from game_client import TetrisGame
+    except ImportError:
+        class TetrisGame: 
+            def __init__(self, *args): 
+                messagebox.showwarning("Game", "game_client_multiplayer.py not found")
+
 
 try:
     from feature_utils import FeatureManager
@@ -691,15 +695,46 @@ class ChatGUI:
         self.group_btn.config(state=tk.DISABLED)
 
     def on_start_game(self):
-        """Start game"""
+        """Start Tetris game - MULTIPLAYER with individual scores"""
         if self.game_window:
             self.game_window.window.lift()
             return
+            
         try:
-            player_name = self.peer_name if self.peer_name else "Solo"
-            self.game_window = TetrisGame(self.window, self.send_callback, player_name)
-            self.add_system_message("Tetris started!")
+            # Check if in a chat (2-person or group)
+            contact_text = self.contact_label.cget("text")
+            in_group = contact_text.startswith("Group")
+            in_private = (self.peer_name is not None)
+            
+            if not in_group and not in_private:
+                messagebox.showerror("No Connection", "Connect to someone or create a group first!")
+                return
+            
+            # Get player name
+            player_name = self.client_name if hasattr(self, 'client_name') else (self.peer_name if self.peer_name else "Player")
+            
+            # Send game start to ALL members (broadcasts to group or peer)
+            self.send_callback("GAME_START")
+            
+            # Start game window with multiplayer support
+            from game_client_multiplayer import TetrisGame
+            
+            if in_group:
+                # Group game - enable multiplayer scoreboard
+                self.game_window = TetrisGame(self.window, self.send_callback, 
+                                             player_name, is_group=True)
+                self.add_system_message("🎮 Tetris started! All group members can join.")
+            else:
+                # 1v1 game
+                opponent = self.peer_name if self.peer_name else "Opponent"
+                self.game_window = TetrisGame(self.window, self.send_callback, 
+                                             player_name, is_group=False)
+                self.add_system_message("🎮 Tetris started!")
+                
         except Exception as e:
+            print(f"[ERROR] Game start failed: {e}")
+            import traceback
+            traceback.print_exc()
             messagebox.showerror("Game Error", str(e))
 
     def on_who(self):
@@ -726,20 +761,60 @@ class ChatGUI:
     # ============================================
     
     def handle_incoming_message(self, message, sender, timestamp=None, msg_id=None):
-        """Handle incoming message with sentiment"""
+        """Handle incoming message with sentiment - MULTIPLAYER GAME SUPPORT"""
+        
+        # Handle game messages (MULTIPLAYER with individual scores!)
         if message.startswith("GAME_"):
             if self.game_window:
+                # Pass the move/score to existing game window
                 self.game_window.receive_move(message)
             elif "GAME_START" in message:
-                if messagebox.askyesno("Challenge", f"{sender} started Tetris. Join?"):
-                     self.peer_name = sender
-                     self.on_start_game()
+                # Someone started a game - ask if we want to join
+                is_group = self.contact_label.cget("text").startswith("Group")
+                group_text = " in the group chat" if is_group else ""
+                
+                if messagebox.askyesno("Game Challenge", 
+                                       f"{sender} started Tetris{group_text}. Join?"):
+                    # Set peer for compatibility if not set
+                    if not self.peer_name:
+                        self.peer_name = sender
+                    
+                    # Create game with multiplayer support
+                    try:
+                        from game_client_multiplayer import TetrisGame
+                        player_name = self.client_name if hasattr(self, 'client_name') else "Player"
+                        
+                        if is_group:
+                            # Group game - enable multiplayer scoreboard
+                            self.game_window = TetrisGame(self.window, self.send_callback, 
+                                                         player_name, is_group=True)
+                            self.add_system_message("🎮 Joined group game!")
+                        else:
+                            # 1v1 game
+                            self.game_window = TetrisGame(self.window, self.send_callback, 
+                                                         sender, is_group=False)
+                            self.add_system_message("🎮 Joined game!")
+                    except Exception as e:
+                        print(f"[ERROR] Failed to join game: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        messagebox.showerror("Game Error", f"Failed to join: {e}")
             return
         
+        # Analyze sentiment (works for all recipients)
         sentiment = self.feature_manager.analyze_sentiment(message)
+        
+        # DEBUG: Print sentiment analysis result
+        client_name = getattr(self, 'client_name', 'Unknown')
+        print(f"[SENTIMENT {client_name}] '{message}' from {sender} → {sentiment}")
+        
+        # Set timestamp if not provided
         if not timestamp: 
             timestamp = datetime.now().strftime("%I:%M %p")
+        
+        # Display message with sentiment colors
         self.add_message_bubble(message, False, timestamp, sender, sentiment)
+
 
     def handle_system_message(self, message):
         """Handle system messages"""
