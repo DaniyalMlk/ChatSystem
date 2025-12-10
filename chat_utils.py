@@ -5,7 +5,7 @@ FIXED VERSION - Correct port configuration
 import struct
 
 # Network Configuration - FIXED PORT!
-SERVER_IP = '127.0.0.1'  # localhost for local testing
+SERVER_IP = '10.209.78.192'
 SERVER_PORT = 1112  # FIXED: Was 12345, now 1112
 CHAT_PORT = 1112
 SERVER = (SERVER_IP, SERVER_PORT)
