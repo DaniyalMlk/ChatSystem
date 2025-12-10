@@ -1,0 +1,5 @@
+[SERVER] Started on port 1112
+[SERVER] Waiting for connections...
+[SERVER] New connection from ('127.0.0.1', 57303)
+[SERVER] zori logged in
+[SERVER] zori disconnected

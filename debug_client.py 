@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""
+DEBUG CLIENT - Shows exactly what's being sent and received
+"""
+import socket
+import json
+import time
+import threading
+from chat_utils import mysend, myrecv, CHAT_PORT
+
+def receive_loop(sock, name):
+    """Print everything received"""
+    print(f"[{name}] Starting receive loop...")
+    while True:
+        try:
+            msg = myrecv(sock)
+            if not msg:
+                print(f"[{name}] ❌ Server closed connection")
+                break
+            print(f"[{name}] ✅ RECEIVED: {msg}")
+        except Exception as e:
+            print(f"[{name}] ❌ Receive error: {e}")
+            break
+
+def test_connect():
+    """Test 2-person connection"""
+    
+    print("="*60)
+    print("TESTING 2-PERSON CONNECT")
+    print("="*60)
+    
+    # Create 2 clients
+    try:
+        # Client 1: zori
+        print("\n1. Connecting zori...")
+        sock1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock1.connect(('127.0.0.1', CHAT_PORT))
+        
+        # Start receive thread for zori
+        t1 = threading.Thread(target=receive_loop, args=(sock1, 'ZORI'), daemon=True)
+        t1.start()
+        
+        # Login zori
+        print("[ZORI] Sending login...")
+        mysend(sock1, json.dumps({'action': 'login', 'name': 'zori'}))
+        time.sleep(1)
+        
+        # Client 2: nomu
+        print("\n2. Connecting nomu...")
+        sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock2.connect(('127.0.0.1', CHAT_PORT))
+        
+        # Start receive thread for nomu
+        t2 = threading.Thread(target=receive_loop, args=(sock2, 'NOMU'), daemon=True)
+        t2.start()
+        
+        # Login nomu
+        print("[NOMU] Sending login...")
+        mysend(sock2, json.dumps({'action': 'login', 'name': 'nomu'}))
+        time.sleep(1)
+        
+        # Connect zori to nomu
+        print("\n3. Connecting zori → nomu...")
+        connect_msg = json.dumps({'action': 'connect', 'to': 'nomu'})
+        print(f"[ZORI] SENDING: {connect_msg}")
+        mysend(sock1, connect_msg)
+        time.sleep(2)
+        
+        # Try to send a message
+        print("\n4. Sending message from zori...")
+        msg = json.dumps({
+            'action': 'exchange',
+            'message': 'Hello nomu!',
+            'timestamp': '15:50 PM'
+        })
+        print(f"[ZORI] SENDING: {msg}")
+        mysend(sock1, msg)
+        time.sleep(2)
+        
+        print("\n" + "="*60)
+        print("TEST COMPLETE - Check output above")
+        print("="*60)
+        
+        time.sleep(2)
+        
+    except Exception as e:
+        print(f"\n❌ ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    finally:
+        try:
+            sock1.close()
+            sock2.close()
+        except:
+            pass
+
+if __name__ == '__main__':
+    print("Make sure server is running!")
+    print("Starting in 3 seconds...")
+    time.sleep(3)
+    test_connect()

@@ -1,173 +1,218 @@
 """
-chat_group.py - Group management for chat system
-Handles user groups, connections, and room management
+chat_group.py - Enhanced Group Management
+Supports both 2-person private chats and 3+ person group chats
 """
 
 class Group:
-    """Manages chat groups and user connections"""
+    """
+    Enhanced group management supporting:
+    - 2-person private chats
+    - 3+ person group chats
+    - Message broadcasting to all members
+    """
     
     def __init__(self):
-        """Initialize group manager"""
-        # Dictionary: {username: group_id}
-        # group_id = 0 means not in any group (logged in but not chatting)
-        self.users = {}
-        
-        # Dictionary: {group_id: [list of usernames]}
+        """Initialize group management"""
+        # Track all groups: {group_id: [member1, member2, ...]}
         self.groups = {}
         
-        # Counter for creating unique group IDs
-        self.group_counter = 1
+        # Track user's current group: {username: group_id}
+        self.user_to_group = {}
+        
+        # Track private 2-person chats: {(user1, user2): group_id}
+        self.private_chats = {}
+        
+        # Track all registered users (needed for validation)
+        self.users = set()
+        
+        # Group ID counter
+        self.next_group_id = 1
     
-    def join(self, name):
+    def add_user(self, username):
         """
-        Add a user to the system (login)
+        Register a new user in the system
         
         Args:
-            name: Username
+            username: Username to register
         """
-        if name not in self.users:
-            self.users[name] = 0  # 0 = logged in, no group
+        self.users.add(username)
     
-    def leave(self, name):
+    def connect(self, user1, user2):
         """
-        Remove a user from the system (logout)
+        Create or join a 2-person private chat (backward compatible)
         
         Args:
-            name: Username
-        """
-        if name in self.users:
-            # First disconnect from any group
-            self.disconnect(name)
-            # Then remove from users
-            del self.users[name]
-    
-    def is_member(self, name):
-        """
-        Check if user is logged in
-        
-        Args:
-            name: Username
+            user1: First user
+            user2: Second user
             
         Returns:
-            True if user exists, False otherwise
+            group_id or None if failed
         """
-        return name in self.users
+        # Check if either user is already in a group
+        if user1 in self.user_to_group or user2 in self.user_to_group:
+            return None
+        
+        # Check if private chat already exists
+        pair = tuple(sorted([user1, user2]))
+        if pair in self.private_chats:
+            group_id = self.private_chats[pair]
+        else:
+            # Create new private chat
+            group_id = f"private_{self.next_group_id}"
+            self.next_group_id += 1
+            self.groups[group_id] = [user1, user2]
+            self.private_chats[pair] = group_id
+        
+        # Add users to group
+        self.user_to_group[user1] = group_id
+        self.user_to_group[user2] = group_id
+        
+        return group_id
     
-    def connect(self, name1, name2):
+    def create_group(self, members):
         """
-        Connect two users in a private chat
+        Create a new group chat with 3+ members
         
         Args:
-            name1: First user
-            name2: Second user
+            members: List of usernames [user1, user2, user3, ...]
+            
+        Returns:
+            (success: bool, group_id or error_message)
         """
-        # If either user is already in a group, disconnect them first
-        if self.users.get(name1, 0) != 0:
-            self.disconnect(name1)
-        if self.users.get(name2, 0) != 0:
-            self.disconnect(name2)
+        # Validate input
+        if not members or len(members) < 3:
+            return False, "Groups need at least 3 members"
+        
+        # Check if any member is already in a group
+        busy_users = [u for u in members if u in self.user_to_group]
+        if busy_users:
+            return False, f"Users already in chat: {', '.join(busy_users)}"
         
         # Create new group
-        group_id = self.group_counter
-        self.group_counter += 1
+        group_id = f"group_{self.next_group_id}"
+        self.next_group_id += 1
         
-        # Assign both users to this group
-        self.users[name1] = group_id
-        self.users[name2] = group_id
+        self.groups[group_id] = list(members)
         
-        # Create group member list
-        self.groups[group_id] = [name1, name2]
+        # Map all members to this group
+        for member in members:
+            self.user_to_group[member] = group_id
+        
+        return True, group_id
     
-    def disconnect(self, name):
+    def get_group_members(self, group_id):
         """
-        Disconnect a user from their current group
+        Get all members in a group
         
         Args:
-            name: Username
-        """
-        if name not in self.users:
-            return
-        
-        group_id = self.users[name]
-        
-        if group_id == 0:
-            # Not in any group
-            return
-        
-        # Remove user from group
-        self.users[name] = 0
-        
-        if group_id in self.groups:
-            # Remove from group member list
-            if name in self.groups[group_id]:
-                self.groups[group_id].remove(name)
-            
-            # If group is empty, delete it
-            if len(self.groups[group_id]) == 0:
-                del self.groups[group_id]
-            else:
-                # Disconnect remaining members too (since it's a private chat)
-                for member in self.groups[group_id]:
-                    self.users[member] = 0
-                del self.groups[group_id]
-    
-    def list_me(self, name):
-        """
-        List all members in the same group as the user
-        
-        Args:
-            name: Username
+            group_id: Group ID
             
         Returns:
-            List of usernames in the same group (including the user)
+            List of member usernames
         """
-        if name not in self.users:
+        return self.groups.get(group_id, [])
+    
+    def get_user_group(self, username):
+        """
+        Get the group ID that a user is in
+        
+        Args:
+            username: Username to look up
+            
+        Returns:
+            group_id or None
+        """
+        return self.user_to_group.get(username)
+    
+    def get_other_members(self, username):
+        """
+        Get all other members in the user's group
+        
+        Args:
+            username: Username
+            
+        Returns:
+            List of other member usernames (excluding the user)
+        """
+        group_id = self.user_to_group.get(username)
+        if not group_id:
             return []
         
-        group_id = self.users[name]
+        members = self.groups.get(group_id, [])
+        return [m for m in members if m != username]
+    
+    def disconnect(self, username):
+        """
+        Remove a user from their group
         
-        if group_id == 0:
-            # Not in any group
-            return [name]
+        Args:
+            username: User to disconnect
+            
+        Returns:
+            (group_id, remaining_members) or (None, [])
+        """
+        group_id = self.user_to_group.get(username)
+        if not group_id:
+            return None, []
         
+        # Remove user from group
         if group_id in self.groups:
-            return self.groups[group_id].copy()
-        
-        return [name]
-    
-    def list_all(self, name):
-        """
-        List all users and groups (for debugging/admin)
-        
-        Args:
-            name: Username requesting the list
+            self.groups[group_id].remove(username)
+            remaining = self.groups[group_id]
             
-        Returns:
-            Formatted string with users and groups
-        """
-        result = "Users: ------------\n"
-        result += str(self.users) + "\n"
-        result += "Groups: -----------\n"
-        result += str(self.groups) + "\n"
-        return result
-    
-    def get_online_users(self):
-        """
-        Get list of all online users
-        
-        Returns:
-            List of usernames
-        """
-        return list(self.users.keys())
-    
-    def get_group_id(self, name):
-        """
-        Get the group ID for a user
-        
-        Args:
-            name: Username
+            # If group is empty, delete it
+            if not remaining:
+                del self.groups[group_id]
+                
+                # Clean up private chat mapping if it exists
+                for pair, gid in list(self.private_chats.items()):
+                    if gid == group_id:
+                        del self.private_chats[pair]
             
-        Returns:
-            Group ID (0 if not in a group)
+            # If only 1 person left, disconnect them too
+            elif len(remaining) == 1:
+                last_user = remaining[0]
+                del self.groups[group_id]
+                if last_user in self.user_to_group:
+                    del self.user_to_group[last_user]
+                
+                # Clean up private chat mapping
+                for pair, gid in list(self.private_chats.items()):
+                    if gid == group_id:
+                        del self.private_chats[pair]
+                
+                return group_id, []
+        
+        # Remove user from mapping
+        del self.user_to_group[username]
+        
+        return group_id, self.groups.get(group_id, [])
+    
+    def is_in_group(self, username):
+        """Check if user is in any group"""
+        return username in self.user_to_group
+    
+    def get_group_info(self, username):
         """
-        return self.users.get(name, 0)
+        Get detailed group information for a user
+        
+        Returns:
+            {
+                'group_id': str,
+                'members': list,
+                'is_private': bool,
+                'member_count': int
+            }
+        """
+        group_id = self.user_to_group.get(username)
+        if not group_id:
+            return None
+        
+        members = self.groups.get(group_id, [])
+        
+        return {
+            'group_id': group_id,
+            'members': members,
+            'is_private': group_id.startswith('private_'),
+            'member_count': len(members)
+        }

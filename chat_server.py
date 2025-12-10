@@ -1,366 +1,390 @@
 """
-chat_server.py - Complete Working Chat Server with Timestamps
-Supports connections from anywhere (LAN or Internet)
+chat_server.py - COMPLETE VERSION WITH GROUP CHAT SUPPORT
+Ready to copy and paste - no manual edits needed!
 """
-
 import socket
 import select
 import json
-import sys
-from datetime import datetime
-
-# Import your existing modules
-try:
-    import chat_group as grp
-    from chat_utils import mysend, myrecv, CHAT_PORT
-except ImportError:
-    print("Error: Missing chat_group.py or chat_utils.py")
-    print("Make sure these files are in the same directory!")
-    sys.exit(1)
+from chat_utils import mysend, myrecv, CHAT_PORT
+from chat_group import Group
 
 class Server:
-    def __init__(self, host='0.0.0.0', port=None):
-        """
-        Initialize server
+    def __init__(self):
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.bind(('0.0.0.0', CHAT_PORT))
+        self.server_socket.listen(5)
         
-        Args:
-            host: IP to bind to ('0.0.0.0' = all interfaces, allows external connections)
-            port: Port number (default from chat_utils.py)
-        """
-        self.new_clients = [] 
-        self.logged_name2sock = {} 
-        self.logged_sock2name = {} 
-        self.all_sockets = []
-        self.group = grp.Group()
+        # Client tracking
+        self.clients = {}  # {name: socket}
+        self.logged_name2sock = {}  # name -> socket
+        self.logged_sock2name = {}  # socket -> name
         
-        # Track message seen status: {msg_id: {'sender': name, 'receiver': name, 'seen': False}}
-        self.message_status = {}
-        self.message_counter = 0
+        # Group management
+        self.group = Group()
         
-        # Use port from chat_utils or parameter
-        self.port = port if port else CHAT_PORT
-        self.host = host
+        # Socket lists for select
+        self.all_sockets = [self.server_socket]
         
-        # Start server
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        
-        try:
-            self.server.bind((self.host, self.port))
-            self.server.listen(5)
-            self.all_sockets.append(self.server)
-            
-            print("=" * 60)
-            print(f"✓ Server started successfully!")
-            print(f"✓ Listening on: {self.host}:{self.port}")
-            print("=" * 60)
-            
-            # Show local IP addresses
-            self.show_connection_info()
-            
-        except Exception as e:
-            print(f"✗ Failed to start server: {e}")
-            sys.exit(1)
-
-    def show_connection_info(self):
-        """Display connection information for clients"""
-        import subprocess
-        
-        print("\nConnection Information:")
-        print("-" * 60)
-        
-        try:
-            # Get local IP addresses
-            if sys.platform == 'darwin':  # macOS
-                result = subprocess.run(['ifconfig'], capture_output=True, text=True)
-                lines = result.stdout.split('\n')
+        print(f"[SERVER] Started on port {CHAT_PORT}")
+        print("[SERVER] Waiting for connections...")
+    
+    def run(self):
+        """Main server loop"""
+        while True:
+            try:
+                read_ready, _, _ = select.select(self.all_sockets, [], [], 1)
                 
-                ips = []
-                for i, line in enumerate(lines):
-                    if 'inet ' in line and '127.0.0.1' not in line:
-                        parts = line.strip().split()
-                        if len(parts) >= 2:
-                            ip = parts[1]
-                            ips.append(ip)
-                
-                if ips:
-                    print("Local Network IPs:")
-                    for ip in ips:
-                        print(f"  • {ip}:{self.port}")
-                else:
-                    print("  • No local network IP found")
-                    
-            else:  # Linux/Windows
-                print(f"  • Use 'ifconfig' or 'ipconfig' to find your local IP")
-        except:
-            pass
+                for sock in read_ready:
+                    if sock == self.server_socket:
+                        # New connection
+                        self.handle_new_connection()
+                    else:
+                        # Existing client message
+                        self.handle_client_message(sock)
+                        
+            except KeyboardInterrupt:
+                print("\n[SERVER] Shutting down...")
+                break
+            except Exception as e:
+                print(f"[SERVER] Error: {e}")
         
-        print(f"\nLocal clients use: 127.0.0.1:{self.port}")
-        print(f"LAN clients use: <YOUR_LOCAL_IP>:{self.port}")
-        print("-" * 60)
-        print("\nWaiting for connections...\n")
-
-    def new_client(self, sock):
+        self.shutdown()
+    
+    def handle_new_connection(self):
         """Handle new client connection"""
         try:
-            client_addr = sock.getpeername()
-            print(f'[+] New client connected from {client_addr[0]}:{client_addr[1]}')
-        except:
-            print('[+] New client connected')
-        
-        sock.setblocking(0)
-        self.new_clients.append(sock)
-        self.all_sockets.append(sock)
-
-    def login(self, sock):
-        """Handle client login"""
-        try:
-            msg = json.loads(myrecv(sock))
-            if len(msg) > 0 and msg.get('action') == 'login':
-                name = msg.get('name', '')
-                
-                if not name:
-                    mysend(sock, json.dumps({"action":"login", "status":"error"}))
-                    return
-                
-                if self.group.is_member(name):  # Duplicate Check
-                    mysend(sock, json.dumps({"action":"login", "status":"duplicate"}))
-                    print(f'[!] {name} - duplicate login attempt')
-                else:
-                    self.group.join(name)
-                    self.logged_name2sock[name] = sock
-                    self.logged_sock2name[sock] = name
-                    self.new_clients.remove(sock)
-                    mysend(sock, json.dumps({"action":"login", "status":"ok"}))
-                    print(f'[✓] {name} logged in')
+            client_socket, address = self.server_socket.accept()
+            self.all_sockets.append(client_socket)
+            print(f"[SERVER] New connection from {address}")
         except Exception as e:
-            print(f'[!] Login error: {e}')
-            pass
-
-    def logout(self, sock):
-        """Handle client logout"""
-        if sock in self.logged_sock2name:
-            name = self.logged_sock2name[sock]
+            print(f"[SERVER] Error accepting connection: {e}")
+    
+    def handle_client_message(self, sock):
+        """Handle message from existing client"""
+        try:
+            msg = myrecv(sock)
             
-            # Disconnect from any active chats
+            if not msg:
+                # Client disconnected
+                self.handle_disconnect(sock)
+                return
+            
+            # Parse JSON message
             try:
-                peers = self.group.list_me(name)
-                if peers:
-                    self.group.disconnect(name)
-                    # Notify peers
-                    for peer in peers:
-                        if peer != name and peer in self.logged_name2sock:
-                            peer_sock = self.logged_name2sock[peer]
-                            try:
-                                mysend(peer_sock, json.dumps({
-                                    "action": "disconnect",
-                                    "message": f"{name} disconnected"
-                                }))
-                            except:
-                                pass
-            except:
-                pass
+                data = json.loads(msg)
+            except json.JSONDecodeError:
+                # Handle legacy text commands
+                self.handle_legacy_command(sock, msg)
+                return
             
-            # Remove from group and mappings
-            self.group.leave(name)
-            del self.logged_name2sock[name]
-            del self.logged_sock2name[sock]
-            self.all_sockets.remove(sock)
+            action = data.get('action', '')
             
+            # Route to appropriate handler
+            if action == 'login':
+                self.handle_login(sock, data)
+            elif action == 'connect':
+                self.handle_connect(sock, data)
+            elif action == 'create_group':  # NEW: Group chat support
+                self.handle_create_group(sock, data)
+            elif action == 'exchange':
+                self.handle_exchange(sock, data)
+            elif action == 'disconnect':
+                self.handle_disconnect_request(sock, data)
+            elif action == 'who':
+                self.handle_who(sock)
+            elif action == 'quit':
+                self.handle_disconnect(sock)
+            else:
+                print(f"[SERVER] Unknown action: {action}")
+                
+        except Exception as e:
+            print(f"[SERVER] Error handling message: {e}")
+            self.handle_disconnect(sock)
+    
+    def handle_login(self, sock, data):
+        """Handle login request"""
+        try:
+            name = data.get('name', '').strip()
+            
+            if not name:
+                self.send_json(sock, {
+                    'action': 'login',
+                    'status': 'error',
+                    'message': 'Name cannot be empty'
+                })
+                return
+            
+            if name in self.clients:
+                self.send_json(sock, {
+                    'action': 'login',
+                    'status': 'error',
+                    'message': 'Name already taken'
+                })
+                return
+            
+            # Register client
+            self.clients[name] = sock
+            self.logged_name2sock[name] = sock
+            self.logged_sock2name[sock] = name
+            self.group.add_user(name)
+            
+            # Send success
+            self.send_json(sock, {
+                'action': 'login',
+                'status': 'success',
+                'message': f'Welcome {name}!'
+            })
+            
+            print(f"[SERVER] {name} logged in")
+            
+        except Exception as e:
+            print(f"[SERVER] Login error: {e}")
+    
+    def handle_connect(self, sock, data):
+        """Handle connection request (2-person chat)"""
+        try:
+            from_name = self.logged_sock2name.get(sock)
+            to_name = data.get('to', '')
+            
+            if not from_name:
+                print(f"[DEBUG] from_name is None!") 
+                return
+            
+            if to_name not in self.clients:
+                print(f"[DEBUG] {to_name} not in clients!") 
+                self.send_json(sock, {
+                    'action': 'connect',
+                    'status': 'error',
+                    'message': f'{to_name} not found'
+                })
+                return
+            print(f"[DEBUG] Calling group.connect({from_name}, {to_name})")
+            # Create 2-person group
+            result = self.group.connect(from_name, to_name)
+            print(f"[DEBUG] group.connect returned: {result}")
+            
+            if not result:
+                self.send_json(sock, {
+                    'action': 'connect',
+                    'status': 'error',
+                    'message': 'Connection failed (user busy?)'
+                })
+                return
+            
+            # Notify both users
+            self.send_json(sock, {
+                'action': 'connect',
+                'status': 'success',
+                'message': f'Connected to {to_name}'
+            })
+            
+            to_sock = self.clients.get(to_name)
+            if to_sock:
+                self.send_json(to_sock, {
+                    'action': 'connect',
+                    'status': 'success',
+                    'message': f'Connected to {from_name}'
+                })
+            
+            print(f"[SERVER] {from_name} ↔ {to_name}")
+            
+        except Exception as e:
+            print(f"[SERVER] Connect error: {e}")
+    
+    def handle_create_group(self, sock, data):
+        """
+        NEW METHOD: Handle group creation (3+ people)
+        
+        Expected data:
+        {
+            'action': 'create_group',
+            'members': ['alice', 'bob', 'charlie']
+        }
+        """
+        try:
+            creator = self.logged_sock2name.get(sock)
+            members_list = data.get('members', [])
+            
+            if not creator:
+                self.send_json(sock, {
+                    'action': 'error',
+                    'message': 'You must be logged in'
+                })
+                return
+            
+            # Add creator if not in list
+            if creator not in members_list:
+                members_list.insert(0, creator)
+            
+            # Validate all members exist
+            invalid_members = [m for m in members_list if m not in self.clients]
+            if invalid_members:
+                self.send_json(sock, {
+                    'action': 'error',
+                    'message': f'Users not found: {", ".join(invalid_members)}'
+                })
+                return
+            
+            # Create group using enhanced Group class
+            success, result = self.group.create_group(members_list)
+            
+            if not success:
+                self.send_json(sock, {
+                    'action': 'error',
+                    'message': result
+                })
+                return
+            
+            group_id = result
+            
+            # Notify all members
+            for member in members_list:
+                member_socket = self.clients.get(member)
+                if member_socket:
+                    self.send_json(member_socket, {
+                        'action': 'group_created',
+                        'group_id': group_id,
+                        'members': members_list,
+                        'message': f'Group chat created: {", ".join(members_list)}'
+                    })
+            
+            print(f"[SERVER] Group {group_id} created with: {members_list}")
+            
+        except Exception as e:
+            print(f"[SERVER] Create group error: {e}")
+    
+    def handle_exchange(self, sock, data):
+        """Handle message exchange (works for both 2-person and group chats)"""
+        try:
+            sender = self.logged_sock2name.get(sock)
+            message = data.get('message', '')
+            timestamp = data.get('timestamp', '')
+            
+            if not sender:
+                return
+            
+            # Get sender's group
+            group_id = self.group.get_user_group(sender)
+            if not group_id:
+                self.send_json(sock, {
+                    'action': 'error',
+                    'message': 'You are not in any chat'
+                })
+                return
+            
+            # Get all other members in group
+            recipients = self.group.get_other_members(sender)
+            
+            # Send to all recipients
+            for recipient in recipients:
+                recipient_sock = self.clients.get(recipient)
+                if recipient_sock:
+                    self.send_json(recipient_sock, {
+                        'action': 'incoming',
+                        'from': sender,  # IMPORTANT: Include sender name
+                        'message': message,
+                        'timestamp': timestamp
+                    })
+            
+            print(f"[SERVER] {sender} → {recipients}: {message[:50]}...")
+            
+        except Exception as e:
+            print(f"[SERVER] Exchange error: {e}")
+    
+    def handle_disconnect_request(self, sock, data):
+        """Handle explicit disconnect request"""
+        self.handle_disconnect(sock)
+    
+    def handle_who(self, sock):
+        """Handle 'who is online' request"""
+        try:
+            requester = self.logged_sock2name.get(sock)
+            users = [name for name in self.clients.keys() if name != requester]
+            
+            self.send_json(sock, {
+                'action': 'who',
+                'users': users
+            })
+            
+        except Exception as e:
+            print(f"[SERVER] Who error: {e}")
+    
+    def handle_disconnect(self, sock):
+        """Handle client disconnection"""
+        try:
+            name = self.logged_sock2name.get(sock)
+            
+            if name:
+                # Get group info before disconnecting
+                group_id, remaining = self.group.disconnect(name)
+                
+                # Notify remaining members
+                if group_id and remaining:
+                    for member in remaining:
+                        member_sock = self.clients.get(member)
+                        if member_sock:
+                            self.send_json(member_sock, {
+                                'action': 'disconnect',
+                                'message': f'{name} left the chat'
+                            })
+                
+                # Clean up
+                del self.clients[name]
+                del self.logged_name2sock[name]
+                del self.logged_sock2name[sock]
+                
+                print(f"[SERVER] {name} disconnected")
+            
+            # Remove socket
+            if sock in self.all_sockets:
+                self.all_sockets.remove(sock)
+            
+            sock.close()
+            
+        except Exception as e:
+            print(f"[SERVER] Disconnect error: {e}")
+    
+    def handle_legacy_command(self, sock, msg):
+        """Handle old text-based commands for backward compatibility"""
+        try:
+            parts = msg.split()
+            command = parts[0] if parts else ''
+            
+            if command == 'connect' and len(parts) >= 2:
+                self.handle_connect(sock, {'to': parts[1]})
+            elif command == 'who':
+                self.handle_who(sock)
+            elif command == 'q':
+                self.handle_disconnect(sock)
+            else:
+                # Try to send as message
+                self.handle_exchange(sock, {
+                    'message': msg,
+                    'timestamp': ''
+                })
+                
+        except Exception as e:
+            print(f"[SERVER] Legacy command error: {e}")
+    
+    def send_json(self, sock, data):
+        """Helper: Send JSON message to socket"""
+        try:
+            json_str = json.dumps(data)
+            mysend(sock, json_str)
+        except Exception as e:
+            print(f"[SERVER] Send error: {e}")
+    
+    def shutdown(self):
+        """Shutdown server gracefully"""
+        print("[SERVER] Closing all connections...")
+        for sock in self.all_sockets:
             try:
                 sock.close()
             except:
                 pass
-            
-            print(f'[-] {name} logged out')
-
-    def handle_msg(self, from_sock):
-        """Handle incoming messages from clients"""
-        try:
-            msg = myrecv(from_sock)
-            if not msg or len(msg) == 0:
-                self.logout(from_sock)
-                return
-                
-            msg = json.loads(msg)
-            action = msg.get('action', '')
-            
-            # 1. Connect Request
-            if action == 'connect':
-                to_name = msg.get('target', '')
-                from_name = self.logged_sock2name.get(from_sock, '')
-                
-                if not from_name:
-                    return
-                
-                if not self.group.is_member(to_name):
-                    mysend(from_sock, json.dumps({"action":"connect", "status":"no-user"}))
-                    print(f'[!] {from_name} tried to connect to non-existent user: {to_name}')
-                else:
-                    self.group.connect(from_name, to_name)
-                    mysend(from_sock, json.dumps({"action":"connect", "status":"success"}))
-                    print(f'[✓] {from_name} connected to {to_name}')
-                    
-                    # Notify the other person
-                    to_sock = self.logged_name2sock[to_name]
-                    mysend(to_sock, json.dumps({
-                        "action":"connect", 
-                        "status":"request", 
-                        "from":from_name
-                    }))
-
-            # 2. Exchange (Chat / Game Moves)
-            elif action == 'exchange':
-                from_name = self.logged_sock2name.get(from_sock, '')
-                if not from_name:
-                    return
-                
-                # Get everyone in the group (the peer)
-                peers = self.group.list_me(from_name)
-                message = msg.get('message', '')
-                
-                # Generate message ID and timestamp
-                self.message_counter += 1
-                msg_id = f"{from_name}_{self.message_counter}"
-                timestamp = datetime.now().strftime("%I:%M %p")  # "08:32 PM"
-                
-                # Log message (but not game moves)
-                if not message.startswith('GAME_'):
-                    print(f'[MSG] {from_name} [{timestamp}]: {message[:50]}...' if len(message) > 50 else f'[MSG] {from_name} [{timestamp}]: {message}')
-                
-                for peer in peers:
-                    if peer != from_name:
-                        to_sock = self.logged_name2sock.get(peer)
-                        if to_sock:
-                            # Forward message with timestamp and message ID
-                            mysend(to_sock, json.dumps({
-                                "action":"exchange", 
-                                "from": from_name, 
-                                "message": message,
-                                "timestamp": timestamp,
-                                "msg_id": msg_id,
-                                "status": "delivered"
-                            }))
-                            
-                            # Track message for seen status
-                            self.message_status[msg_id] = {
-                                'sender': from_name,
-                                'receiver': peer,
-                                'seen': False
-                            }
-
-            # 3. Message Seen Notification
-            elif action == 'seen':
-                msg_id = msg.get('msg_id', '')
-                from_name = self.logged_sock2name.get(from_sock, '')
-                
-                if msg_id in self.message_status:
-                    self.message_status[msg_id]['seen'] = True
-                    
-                    # Notify sender that message was seen
-                    sender = self.message_status[msg_id]['sender']
-                    if sender in self.logged_name2sock:
-                        sender_sock = self.logged_name2sock[sender]
-                        try:
-                            mysend(sender_sock, json.dumps({
-                                "action": "seen_ack",
-                                "msg_id": msg_id,
-                                "seen_by": from_name
-                            }))
-                        except:
-                            pass
-
-            # 4. Disconnect
-            elif action == 'disconnect':
-                from_name = self.logged_sock2name.get(from_sock, '')
-                if not from_name:
-                    return
-                    
-                peers = self.group.list_me(from_name)
-                self.group.disconnect(from_name)
-                print(f'[-] {from_name} disconnected from chat')
-                
-                # Notify others
-                for peer in peers:
-                    if peer != from_name and peer in self.logged_name2sock:
-                        to_sock = self.logged_name2sock[peer]
-                        try:
-                            mysend(to_sock, json.dumps({
-                                "action":"disconnect",
-                                "message": f"{from_name} disconnected"
-                            }))
-                        except:
-                            pass
-
-            # 5. List Users (Who)
-            elif action == 'list':
-                from_name = self.logged_sock2name.get(from_sock, '')
-                if not from_name:
-                    return
-                    
-                user_list = self.group.list_all(from_name)
-                mysend(from_sock, json.dumps({
-                    "action":"list", 
-                    "results":user_list
-                }))
-
-        except Exception as e:
-            print(f'[!] Error handling message: {e}')
-            self.logout(from_sock)
-
-    def run(self):
-        """Main server loop"""
-        print("Server is running. Press Ctrl+C to stop.\n")
-        
-        try:
-            while True:
-                read, _, _ = select.select(self.all_sockets, [], [])
-                for sock in read:
-                    if sock == self.server:
-                        newsock, addr = self.server.accept()
-                        self.new_client(newsock)
-                    elif sock in self.new_clients:
-                        self.login(sock)
-                    elif sock in self.logged_sock2name:
-                        self.handle_msg(sock)
-        except KeyboardInterrupt:
-            print("\n\n[!] Server shutting down...")
-            self.shutdown()
-        except Exception as e:
-            print(f"\n[!] Server error: {e}")
-            self.shutdown()
-    
-    def shutdown(self):
-        """Clean shutdown"""
-        print("[!] Closing all connections...")
-        
-        # Close all client sockets
-        for sock in list(self.all_sockets):
-            if sock != self.server:
-                try:
-                    sock.close()
-                except:
-                    pass
-        
-        # Close server socket
-        try:
-            self.server.close()
-        except:
-            pass
-        
-        print("[✓] Server stopped")
+        print("[SERVER] Shutdown complete")
 
 if __name__ == '__main__':
-    # Allow custom port from command line
-    port = None
-    host = '0.0.0.0'  # Listen on all interfaces
-    
-    if len(sys.argv) > 1:
-        try:
-            port = int(sys.argv[1])
-        except:
-            print("Usage: python3 chat_server.py [port]")
-            sys.exit(1)
-    
-    server = Server(host=host, port=port)
+    server = Server()
     server.run()

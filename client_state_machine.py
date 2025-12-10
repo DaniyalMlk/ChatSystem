@@ -1,260 +1,265 @@
 """
-client_state_machine.py - Client State Machine with Timestamps & Seen Status
-Handles client states and message processing
+client_state_machine.py - COMPLETE VERSION WITH GROUP CHAT SUPPORT
+Ready to copy and paste - no manual edits needed!
 """
-
 import json
-import re
 
-# State constants
+# States
 S_OFFLINE = 0
 S_LOGGEDIN = 1
 S_CHATTING = 2
 
 class ClientStateMachine:
-    """Manages client state and processes incoming messages"""
-    
-    def __init__(self, client_name):
-        """
-        Initialize state machine
-        
-        Args:
-            client_name: The client's nickname
-        """
+    def __init__(self, gui=None):
         self.state = S_OFFLINE
-        self.client_name = client_name
+        self.gui = gui
         self.peer_name = None
-        self.gui = None  # Will be set by client class
-        self.send_callback = None  # Will be set by client class
+        self.my_name = None
     
     def set_state(self, new_state):
-        """Change the client state"""
-        old_state = self.state
+        """Change state"""
         self.state = new_state
-        print(f"[STATE] {self._state_name(old_state)} -> {self._state_name(new_state)}")
     
-    def _state_name(self, state):
-        """Get human-readable state name"""
-        if state == S_OFFLINE:
-            return "OFFLINE"
-        elif state == S_LOGGEDIN:
-            return "LOGGED IN"
-        elif state == S_CHATTING:
-            return "CHATTING"
-        return "UNKNOWN"
+    def get_state(self):
+        """Get current state"""
+        return self.state
     
     def process_message(self, msg):
         """
         Process incoming message from server
-        
-        Args:
-            msg: JSON message from server
+        Handles both 2-person and group chat messages
         """
         try:
-            if not msg:
-                return
-            
-            # Parse JSON
             data = json.loads(msg)
-            
-            # Extract message action
-            action = data.get('action', '')
-            
-            if action == 'login':
-                status = data.get('status', '')
-                if status == 'ok':
-                    self._handle_login_success()
-                elif status == 'duplicate':
-                    self._handle_error({'message': 'Nickname already in use'})
-            
-            elif action == 'connect':
-                status = data.get('status', '')
-                if status == 'success':
-                    # We initiated connection
-                    self._handle_connect_success(data)
-                elif status == 'request':
-                    # Someone is connecting to us
-                    from_user = data.get('from', 'Unknown')
-                    self.peer_name = from_user
-                    self.set_state(S_CHATTING)
-                    if self.gui:
-                        self.gui.peer_name = from_user
-                        self.gui.handle_system_message(f"{from_user} connected to you")
-                        self.gui.update_status(f"Chatting with {from_user}")
-                elif status == 'no-user':
-                    self._handle_error({'message': 'User not found'})
-            
-            elif action == 'exchange':
-                self._handle_incoming_message(data)
-            
-            elif action == 'seen_ack':
-                self._handle_seen_acknowledgment(data)
-            
-            elif action == 'list':
-                self._handle_user_list(data)
-            
-            elif action == 'disconnect':
-                self._handle_disconnect(data)
-            
-            else:
-                print(f"[WARN] Unknown message action: {action}")
-                
-        except json.JSONDecodeError as e:
-            print(f"[ERROR] JSON parsing error: {e}")
-            print(f"[ERROR] Raw message: {msg}")
-        except Exception as e:
-            print(f"[ERROR] Message processing error: {e}")
+        except (json.JSONDecodeError, ValueError):
+            # Legacy text message
+            if self.gui:
+                self.gui.display_system_message(msg)
+            return
+        
+        action = data.get('action', '')
+        
+        # Route to appropriate handler based on action
+        if action == 'login':
+            self.handle_login_response(data)
+        
+        elif action == 'connect':
+            self.handle_connect_response(data)
+        
+        elif action == 'group_created':  # NEW: Handle group creation
+            self.handle_group_created(data)
+        
+        elif action == 'incoming':
+            self.handle_incoming_message(data)
+        
+        elif action == 'disconnect':
+            self.handle_disconnect(data)
+        
+        elif action == 'who':
+            self.handle_who_response(data)
+        
+        elif action == 'error':
+            self.handle_error(data)
+        
+        else:
+            print(f"[CLIENT] Unknown action: {action}")
     
-    def _handle_login_success(self):
-        """Handle successful login"""
-        self.set_state(S_LOGGEDIN)
-        if self.gui:
-            self.gui.display_system_message("Successfully logged in!")
-            self.gui.update_status("Logged In")
-    
-    def _handle_error(self, data):
-        """Handle error message"""
-        error_msg = data.get('message', 'Unknown error')
-        print(f"[ERROR] Server error: {error_msg}")
+    def handle_login_response(self, data):
+        """Handle login response"""
+        status = data.get('status')
+        message = data.get('message', '')
         
         if self.gui:
-            self.gui.display_system_message(f"Error: {error_msg}")
+            if status == 'success':
+                self.gui.display_system_message(message)
+                self.state = S_LOGGEDIN
+            else:
+                self.gui.display_system_message(f"Login failed: {message}")
     
-    def _handle_incoming_message(self, data):
-        """Handle incoming chat message"""
+    def handle_connect_response(self, data):
+        """Handle connection response (2-person chat)"""
+        status = data.get('status')
+        message = data.get('message', '')
+        
+        if self.gui:
+            if status == 'success':
+                self.gui.handle_system_message(message)
+                self.state = S_CHATTING
+                
+                # Extract peer name from message
+                if 'Connected to' in message:
+                    peer = message.replace('Connected to', '').strip()
+                    self.peer_name = peer
+            else:
+                self.gui.display_system_message(f"Connection failed: {message}")
+    
+    def handle_group_created(self, data):
+        """
+        NEW METHOD: Handle group creation notification
+        
+        Expected data:
+        {
+            'action': 'group_created',
+            'group_id': 'group_1',
+            'members': ['alice', 'bob', 'charlie'],
+            'message': 'Group chat created: alice, bob, charlie'
+        }
+        """
+        if not self.gui:
+            return
+        
+        members = data.get('members', [])
+        message = data.get('message', 'Group created')
+        group_id = data.get('group_id', '')
+        
+        # Update state to chatting
+        self.state = S_CHATTING
+        
+        # Notify GUI to handle group creation
+        self.gui.handle_group_created(data)
+        
+        print(f"[CLIENT] Joined group {group_id} with {len(members)} members")
+    
+    def handle_incoming_message(self, data):
+        """
+        Handle incoming message (works for both 2-person and group chat)
+        
+        Expected data:
+        {
+            'action': 'incoming',
+            'from': 'alice',  # Sender name
+            'message': 'Hello!',
+            'timestamp': '08:30 PM'
+        }
+        """
+        if not self.gui:
+            return
+        
         sender = data.get('from', 'Unknown')
         message = data.get('message', '')
         timestamp = data.get('timestamp', '')
-        msg_id = data.get('msg_id', '')
+        msg_id = data.get('msg_id')
         
-        # Filter out game messages from chat display
-        if message.startswith("GAME_"):
-            # Route to game window
-            if self.gui and self.gui.game_window:
-                self.gui.game_window.receive_move(message)
-            return
+        # Pass to GUI with sender name
+        self.gui.handle_incoming_message(
+            message,
+            sender,  # NEW: Always pass sender name
+            timestamp,
+            msg_id
+        )
         
-        # Display regular message with timestamp
-        if self.gui:
-            self.gui.handle_incoming_message(message, sender, timestamp, msg_id)
-            
-            # Send seen notification after a short delay (simulating reading)
-            # In a real app, this would be when user actually views the message
-            if msg_id and self.send_callback:
-                # Send seen notification
-                import threading
-                def send_seen():
-                    import time
-                    time.sleep(0.5)  # Small delay to simulate reading
-                    if self.send_callback:
-                        seen_msg = json.dumps({
-                            'action': 'seen',
-                            'msg_id': msg_id
-                        })
-                        try:
-                            from chat_utils import mysend
-                            # Access the socket through the client
-                            # This is a bit hacky - better to pass socket reference
-                            # For now, we'll skip auto-seen and add manual seen later
-                            pass
-                        except:
-                            pass
-                
-                # threading.Thread(target=send_seen, daemon=True).start()
+        # Update state if needed
+        if self.state == S_LOGGEDIN:
+            self.state = S_CHATTING
     
-    def _handle_seen_acknowledgment(self, data):
-        """Handle seen acknowledgment from server"""
-        msg_id = data.get('msg_id', '')
-        seen_by = data.get('seen_by', '')
+    def handle_disconnect(self, data):
+        """Handle disconnection notification"""
+        message = data.get('message', 'Disconnected')
         
         if self.gui:
-            self.gui.mark_message_as_seen(msg_id)
-    
-    def _handle_user_list(self, data):
-        """Handle online user list"""
-        results = data.get('results', '')
+            self.gui.handle_system_message(message)
         
-        # Parse the results string to extract usernames
-        users = []
-        if isinstance(results, str):
-            # Server returns format: "Users: ----\n{'name1': 0, 'name2': 0}\n..."
-            # Extract usernames from the dictionary
-            try:
-                for line in results.split('\n'):
-                    if "'" in line and ':' in line:
-                        # Find all quoted strings
-                        matches = re.findall(r"'([^']+)'", line)
-                        for match in matches:
-                            if match not in ['Users', 'Groups'] and match not in users:
-                                users.append(match)
-            except Exception as e:
-                print(f"[WARN] Error parsing user list: {e}")
+        # Update state
+        self.state = S_LOGGEDIN
+        self.peer_name = None
+    
+    def handle_who_response(self, data):
+        """Handle 'who is online' response"""
+        users = data.get('users', [])
         
         if self.gui:
             self.gui.handle_user_list(users)
     
-    def _handle_connect_success(self, data):
-        """Handle successful connection to peer"""
-        self.set_state(S_CHATTING)
+    def handle_error(self, data):
+        """Handle error message"""
+        message = data.get('message', 'An error occurred')
         
         if self.gui:
-            if self.peer_name:
-                self.gui.handle_system_message(f"Connected to {self.peer_name}")
-                self.gui.update_status(f"Chatting with {self.peer_name}")
-            else:
-                self.gui.handle_system_message("Connection established")
-                self.gui.update_status("Chatting")
+            self.gui.display_system_message(f"❌ Error: {message}")
     
-    def _handle_disconnect(self, data):
-        """Handle disconnection from peer"""
-        message = data.get('message', 'Disconnected')
-        
-        peer = self.peer_name
-        self.peer_name = None
-        self.set_state(S_LOGGEDIN)
-        
-        if self.gui:
-            self.gui.peer_name = None
-            self.gui.handle_system_message(message)
-            self.gui.update_status("Logged In")
+    def format_login(self, name):
+        """Format login message"""
+        self.my_name = name
+        return json.dumps({
+            'action': 'login',
+            'name': name
+        })
     
-    def format_outgoing_message(self, message):
+    def format_connect(self, peer_name):
+        """Format connection request"""
+        return json.dumps({
+            'action': 'connect',
+            'to': peer_name
+        })
+    
+    def format_create_group(self, members):
         """
-        Format outgoing message as JSON
+        NEW METHOD: Format group creation request
         
         Args:
-            message: Message text
-            
-        Returns:
-            JSON string
+            members: List of usernames ['alice', 'bob', 'charlie']
         """
-        # Handle special commands
-        if message.startswith('connect '):
-            peer = message.split(' ', 1)[1].strip()
-            self.peer_name = peer
-            return json.dumps({
-                'action': 'connect',
-                'target': peer
-            })
-        
-        elif message == 'who':
-            return json.dumps({
-                'action': 'list'
-            })
-        
-        elif message == 'q':
-            return json.dumps({
-                'action': 'disconnect'
-            })
-        
-        elif message.startswith('disconnect'):
-            return json.dumps({
-                'action': 'disconnect'
-            })
-        
-        # Game messages and regular chat messages
-        else:
-            return json.dumps({
-                'action': 'exchange',
-                'message': message
-            })
+        return json.dumps({
+            'action': 'create_group',
+            'members': members
+        })
+    
+    def format_message(self, message, timestamp=''):
+        """Format outgoing message"""
+        return json.dumps({
+            'action': 'exchange',
+            'message': message,
+            'timestamp': timestamp
+        })
+    
+    def format_disconnect(self):
+        """Format disconnect request"""
+        return json.dumps({
+            'action': 'disconnect'
+        })
+    
+    def format_who(self):
+        """Format 'who is online' request"""
+        return json.dumps({
+            'action': 'who'
+        })
+    
+    def format_quit(self):
+        """Format quit request"""
+        return json.dumps({
+            'action': 'quit'
+        })
+    
+    # ============================================
+    # COMPATIBILITY ALIASES
+    # ============================================
+    
+    def format_outgoing_message(self, message, timestamp=''):
+        """
+        Alias for format_message - for compatibility
+        Your client code calls this instead of format_message
+        """
+        return self.format_message(message, timestamp)
+    
+    def format_login_message(self, name):
+        """Alias for format_login - for compatibility"""
+        return self.format_login(name)
+    
+    def format_connect_message(self, peer_name):
+        """Alias for format_connect - for compatibility"""
+        return self.format_connect(peer_name)
+    
+    def format_disconnect_message(self):
+        """Alias for format_disconnect - for compatibility"""
+        return self.format_disconnect()
+    
+    def format_who_message(self):
+        """Alias for format_who - for compatibility"""
+        return self.format_who()
+    
+    def format_outgoing_message(self, message, timestamp=''):
+        """
+        Alias for format_message - for compatibility
+        Some parts of the client might call this instead
+        """
+        return self.format_message(message, timestamp)

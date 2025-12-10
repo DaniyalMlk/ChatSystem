@@ -52,8 +52,9 @@ class ChatClient:
         
         self.client_name = nickname
         
-        # Initialize state machine
-        self.state_machine = ClientStateMachine(nickname)
+        # Initialize state machine (no arguments!)
+        self.state_machine = ClientStateMachine()
+        self.state_machine.my_name = nickname
         
         # Send login message
         login_msg = json.dumps({
@@ -70,16 +71,42 @@ class ChatClient:
             return False
     
     def send_message(self, message):
-        """
-        Send message to server
-        
-        Args:
-            message: Message text or command
-        """
+
         try:
-            # Format message using state machine
-            formatted_msg = self.state_machine.format_outgoing_message(message)
+            import json
+            print(f"[DEBUG] send_message called with: '{message}'") 
+        # Check if it's a command
+            if message.startswith('connect '):
+            # Extract peer name
+                peer_name = message.split(' ', 1)[1].strip()
+                formatted_msg = json.dumps({
+                    'action': 'connect',
+                    'to': peer_name
+                })
+            elif 'who' in message.lower() or message.strip() == 'who':
+                formatted_msg = json.dumps({
+                    'action': 'who'
+                })
+                print(f"[DEBUG] Sending who request: {formatted_msg}")
+            elif message.startswith('q'):
+                formatted_msg = json.dumps({
+                    'action': 'quit'
+                })
+            elif isinstance(message, str) and message.startswith('{'):
+            # Already JSON (from Create Group button)
+                formatted_msg = message
+            else:
+            # Regular message - format with timestamp
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%I:%M %p")
+                formatted_msg = json.dumps({
+                    'action': 'exchange',
+                    'message': message,
+                    'timestamp': timestamp
+                })
+        
             mysend(self.socket, formatted_msg)
+        
         except Exception as e:
             print(f"[✗] Error sending message: {e}")
             if self.gui:

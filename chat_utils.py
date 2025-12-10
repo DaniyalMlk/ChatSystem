@@ -1,51 +1,75 @@
-import socket
+"""
+chat_utils.py - Utility functions for chat system
+FIXED VERSION - Correct port configuration
+"""
+import struct
 
-# ---------------------------------------------------
-# NETWORK CONFIGURATION
-# ---------------------------------------------------
-# Zori's IP Address
-SERVER_IP = '10.209.64.148' 
-
-# The code uses both names, so we define both to be safe:
-SERVER_PORT = 12345
-CHAT_PORT = 12345 
+# Network Configuration - FIXED PORT!
+SERVER_IP = '127.0.0.1'  # localhost for local testing
+SERVER_PORT = 1112  # FIXED: Was 12345, now 1112
+CHAT_PORT = 1112
+SERVER = (SERVER_IP, SERVER_PORT)
+SIZE_SPEC = 'I'  # unsigned int for message length
 
 def mysend(s, msg):
     """
-    Sends a string message with a 4-byte length header.
+    Send a message with a 4-byte length header
+    
+    Args:
+        s: socket object
+        msg: string or bytes to send
     """
     try:
+        # Convert string to bytes if needed
         if isinstance(msg, str):
             msg_bytes = msg.encode('utf-8')
         else:
             msg_bytes = msg
-            
-        msg_len = len(msg_bytes)
-        s.sendall(msg_len.to_bytes(4, 'big') + msg_bytes)
+        
+        # Get length and create header
+        length = len(msg_bytes)
+        length_prefix = struct.pack(SIZE_SPEC, length)
+        
+        # Send length + message
+        s.sendall(length_prefix + msg_bytes)
+        
     except Exception as e:
-        print(f"[!] Send error: {e}")
+        print(f"[ERROR] Send failed: {e}")
+        raise
 
 def myrecv(s):
     """
-    Receives a string message handling the 4-byte length header.
+    Receive a message with a 4-byte length header
+    
+    Args:
+        s: socket object
+        
+    Returns:
+        Decoded string message or None if connection closed
     """
     try:
-        msg_len_bytes = s.recv(4)
-        if not msg_len_bytes:
-            return None
-        
-        msg_len = int.from_bytes(msg_len_bytes, 'big')
-        
-        chunks = []
-        bytes_recd = 0
-        while bytes_recd < msg_len:
-            chunk = s.recv(min(msg_len - bytes_recd, 4096))
+        # Read 4-byte length header
+        length_bytes = b''
+        while len(length_bytes) < 4:
+            chunk = s.recv(4 - len(length_bytes))
             if not chunk:
-                return None
-            chunks.append(chunk)
-            bytes_recd += len(chunk)
+                return None  # Connection closed
+            length_bytes += chunk
         
-        return b''.join(chunks).decode('utf-8')
+        # Unpack length
+        length = struct.unpack(SIZE_SPEC, length_bytes)[0]
+        
+        # Read message bytes
+        msg_bytes = b''
+        while len(msg_bytes) < length:
+            chunk = s.recv(min(length - len(msg_bytes), 4096))
+            if not chunk:
+                return None  # Connection closed
+            msg_bytes += chunk
+        
+        # Decode and return
+        return msg_bytes.decode('utf-8')
         
     except Exception as e:
+        print(f"[ERROR] Receive failed: {e}")
         return None
