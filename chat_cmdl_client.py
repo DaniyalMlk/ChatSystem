@@ -12,11 +12,12 @@ def main():
     print("ICS Chat Client")
     print("Distributed Client-Server Chat System")
     print("=" * 50)
-    print()
     
     # Check if custom server address is provided
     from chat_utils import SERVER_IP, SERVER_PORT
+    server_ip = SERVER_IP
     server_port = SERVER_PORT
+    print(f"Server: {server_ip}:{server_port}")
 
     
     # Parse command line arguments
